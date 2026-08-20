@@ -12,6 +12,12 @@
 constexpr int MAX_EVENTS = 64;
 constexpr int PORT = 6380;
 
+struct ClientState {
+    std::string read_buf;
+    std::string write_buf;
+};
+std::unordered_map<int, ClientState> clients;
+
 void set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
