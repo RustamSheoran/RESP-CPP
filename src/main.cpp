@@ -49,13 +49,12 @@ int main() {
 
     while (true) {
         int n = epoll_wait(epfd, events, MAX_EVENTS, -1);
-
         for (int i = 0; i < n; i++) {
             int fd = events[i].data.fd;
-
             if (fd == server_fd) {
                 while (true) {
                     int client_fd = accept(server_fd, nullptr, nullptr);
+                    clients[client_fd] = ClientState{};
                     if (client_fd < 0) break; 
                     set_nonblocking(client_fd);
                     epoll_event cev{};
@@ -65,14 +64,27 @@ int main() {
                     printf("client %d connected\n", client_fd);
                 }
             } else {
-                char buf[1024];
+                char buf[4096];
                 ssize_t count = read(fd, buf, sizeof(buf));
                 if (count <= 0) {
                     epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
                     close(fd);
-                    printf("client %d disconnected\n", fd);
+                    clients.erase(fd);
                 } else {
-                    write(fd, buf, count); 
+                    auto& state = clients[fd];
+                    state.read_buf.append(buf, count);
+                    state.write_buf += state.read_buf;
+                    state.read_buf.clear();
+                    ssize_t written = write(fd, state.write_buf.data(), state.write_buf.size());
+                    if (written > 0) {
+                        state.write_buf.erase(0, written);
+                    }
+                    if (!state.write_buf.empty()) {
+                        epoll_event cev{};
+                        cev.events = EPOLLIN | EPOLLOUT;
+                        cev.data.fd = fd;
+                        epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &cev);
+                    }
                 }
             }
         }
