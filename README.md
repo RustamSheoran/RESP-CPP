@@ -36,3 +36,9 @@ You can test the server using `netcat`:
 ```bash
 nc localhost 6380
 ```
+
+
+## Some links to in mind while building something like this 
+
+1. beej guide for network programming to understand what each thing does if you are new to socket programming in c++ or c 
+link -> https://beej.us/guide/bgnet/html/split-wide/index.html
