@@ -118,7 +118,7 @@ $$\text{blocking } \texttt{accept()}/\texttt{read()}/\texttt{write()}$$
 $$\downarrow$$
 $$\text{one slow client freezes the entire server for all other clients}$$
 $$\downarrow$$
-$$\text{non-blocking I/O } (\texttt{O\_NONBLOCK})$$
+$$\text{non-blocking I/O } (\texttt{O\NONBLOCK})$$
 $$\downarrow$$
 $$\text{polling every socket in a loop burns 100\% CPU (busy-waiting)}$$
 $$\downarrow$$
@@ -135,7 +135,7 @@ $$\texttt{read()} \text{ does not correspond to application messages}$$
 $$\downarrow$$
 $$\text{messages can arrive split across multiple reads OR lumped together in one read}$$
 $$\downarrow$$
-$$\text{need application-level framing (e.g. delimiter like } \texttt{\textbackslash n} \text{)}$$
+$$\text{need application-level framing (e.g. delimiter like } \texttt{\n} \text{)}$$
 $$\downarrow$$
 $$\text{per-client read buffer to accumulate fragments}$$
 $$\downarrow$$
