@@ -3,4 +3,4 @@
 
 void set_nonblocking(int fd);
 
-#endif // UTILS_H
+#endif

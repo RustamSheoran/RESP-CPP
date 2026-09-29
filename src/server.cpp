@@ -81,13 +81,19 @@ void Server::accept_clients() {
       break;
     clients[client_fd] = ClientState{client_fd, "", ""};
     set_nonblocking(client_fd);
+    int nodelay = 1;
+    setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+
     epoll_event cev{};
     cev.events = EPOLLIN;
     cev.data.fd = client_fd;
     epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &cev);
+#ifdef VERBOSE
     printf("client %d connected\n", client_fd);
+#endif
   }
 }
+
 
 void Server::handle_read(int fd) {
   char buf[4096];
@@ -104,16 +110,28 @@ void Server::handle_read(int fd) {
   auto &state = clients[fd];
   state.read_buf.append(buf, count);
 
-  // Phase 6: Delimiter-based application message framing ('\n')
+  constexpr size_t MAX_QUERY_LEN = 300;
+
   size_t pos;
   while ((pos = state.read_buf.find('\n')) != std::string::npos) {
+    if (pos > MAX_QUERY_LEN) {
+      printf("Client %d query exceeded MAX_QUERY_LEN (%zu bytes). Dropping connection.\n", fd, MAX_QUERY_LEN);
+      close_client(fd);
+      return;
+    }
+
     std::string message = state.read_buf.substr(0, pos);
     state.read_buf.erase(0, pos + 1);
 
     handle_message(fd, message);
   }
 
-  // Attempt to write out queued responses
+  if (state.read_buf.size() > MAX_QUERY_LEN) {
+    printf("Client %d buffer exceeded MAX_QUERY_LEN (%zu bytes). Dropping connection.\n", fd, MAX_QUERY_LEN);
+    close_client(fd);
+    return;
+  }
+
   if (!state.write_buf.empty()) {
     ssize_t written = write(fd, state.write_buf.data(), state.write_buf.size());
     if (written > 0) {
@@ -135,7 +153,6 @@ void Server::handle_read(int fd) {
 void Server::handle_message(int fd, const std::string &message) {
   std::string_view msg_view = message;
 
-  // Trim trailing carriage returns or whitespace
   while (!msg_view.empty() && (msg_view.back() == '\r' || msg_view.back() == ' ')) {
     msg_view.remove_suffix(1);
   }
@@ -147,7 +164,6 @@ void Server::handle_message(int fd, const std::string &message) {
     return;
   }
 
-  // Phase 10: Zero-copy execution of Redis commands (PING, SET, GET, DEL)
   std::string response = Protocol::execute_command(msg_view);
   if (!response.empty()) {
     auto &state = clients[fd];
@@ -180,6 +196,9 @@ void Server::close_client(int fd) {
   epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
   close(fd);
   clients.erase(fd);
+#ifdef VERBOSE
   printf("client %d disconnected\n", fd);
+#endif
 }
+
 

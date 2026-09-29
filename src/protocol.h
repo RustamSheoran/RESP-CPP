@@ -6,9 +6,8 @@
 
 namespace Protocol {
 
-// Takes a view into the command buffer (ZERO heap allocations during parsing!)
 std::string execute_command(std::string_view raw_cmd);
 
-} // namespace Protocol
+}
 
-#endif // PROTOCOL_H
+#endif

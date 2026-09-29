@@ -25,4 +25,4 @@ private:
     static constexpr int MAX_EVENTS = 64;
 };
 
-#endif // SERVER_H
+#endif

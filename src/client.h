@@ -9,4 +9,4 @@ struct ClientState {
     std::string write_buf;
 };
 
-#endif // CLIENT_H
+#endif

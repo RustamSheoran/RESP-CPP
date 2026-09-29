@@ -5,7 +5,6 @@
 
 namespace Protocol {
 
-// In-memory key-value database
 static std::unordered_map<std::string, std::string> db;
 
 static bool equals_ci(std::string_view a, std::string_view b) {
@@ -23,7 +22,6 @@ static std::vector<std::string_view> tokenize(std::string_view raw_cmd) {
     std::vector<std::string_view> tokens;
     size_t i = 0;
     while (i < raw_cmd.size()) {
-        // Skip leading whitespace and carriage returns
         while (i < raw_cmd.size() && (raw_cmd[i] == ' ' || raw_cmd[i] == '\t' || raw_cmd[i] == '\r')) {
             i++;
         }
@@ -46,7 +44,6 @@ std::string execute_command(std::string_view raw_cmd) {
 
     std::string_view cmd = tokens[0];
 
-    // 1. PING -> +PONG\r\n or $len\r\n<msg>\r\n
     if (equals_ci(cmd, "PING")) {
         if (tokens.size() == 1) {
             return "+PONG\r\n";
@@ -58,7 +55,6 @@ std::string execute_command(std::string_view raw_cmd) {
         }
     }
 
-    // 2. SET <key> <val> -> +OK\r\n
     if (equals_ci(cmd, "SET")) {
         if (tokens.size() < 3) {
             return "-ERR wrong number of arguments for 'set' command\r\n";
@@ -66,7 +62,6 @@ std::string execute_command(std::string_view raw_cmd) {
         std::string key(tokens[1]);
         std::string val(tokens[2]);
 
-        // Support values with spaces if passed without quotes: SET key word1 word2 ...
         if (tokens.size() > 3) {
             size_t val_start = tokens[2].data() - raw_cmd.data();
             val = std::string(raw_cmd.substr(val_start));
@@ -75,17 +70,14 @@ std::string execute_command(std::string_view raw_cmd) {
             }
         }
 
-        // Strip surrounding quotes if present: "value" -> value
         if (val.size() >= 2 && val.front() == '"' && val.back() == '"') {
             val = val.substr(1, val.size() - 2);
         }
 
-        // Store into in-memory hash map (ownership transfer from view to string)
         db[key] = val;
         return "+OK\r\n";
     }
 
-    // 3. GET <key> -> $len\r\n<val>\r\n or $-1\r\n (nil)
     if (equals_ci(cmd, "GET")) {
         if (tokens.size() != 2) {
             return "-ERR wrong number of arguments for 'get' command\r\n";
@@ -98,7 +90,6 @@ std::string execute_command(std::string_view raw_cmd) {
         return "$-1\r\n";
     }
 
-    // 4. DEL <key> [<key2> ...] -> :<count>\r\n
     if (equals_ci(cmd, "DEL")) {
         if (tokens.size() < 2) {
             return "-ERR wrong number of arguments for 'del' command\r\n";
@@ -110,7 +101,6 @@ std::string execute_command(std::string_view raw_cmd) {
         return ":" + std::to_string(count) + "\r\n";
     }
 
-    // Redis-cli handshake & session commands compatibility
     if (equals_ci(cmd, "COMMAND")) {
         return "*0\r\n";
     }
@@ -121,4 +111,4 @@ std::string execute_command(std::string_view raw_cmd) {
     return "-ERR unknown command '" + std::string(cmd) + "'\r\n";
 }
 
-} // namespace Protocol
+}
