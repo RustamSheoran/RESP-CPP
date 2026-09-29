@@ -1,5 +1,6 @@
 #include "server.h"
 #include "utils.h"
+#include "protocol.h"
 #include <cstdio>
 #include <cstring>
 #include <netinet/in.h>
@@ -132,15 +133,26 @@ void Server::handle_read(int fd) {
 }
 
 void Server::handle_message(int fd, const std::string &message) {
-  // Strip trailing carriage return if present (e.g. \r\n from telnet/redis clients)
-  std::string clean_msg = message;
-  if (!clean_msg.empty() && clean_msg.back() == '\r') {
-    clean_msg.pop_back();
+  std::string_view msg_view = message;
+
+  // Trim trailing carriage returns or whitespace
+  while (!msg_view.empty() && (msg_view.back() == '\r' || msg_view.back() == ' ')) {
+    msg_view.remove_suffix(1);
+  }
+  while (!msg_view.empty() && (msg_view.front() == ' ')) {
+    msg_view.remove_prefix(1);
   }
 
-  // For Phase 6: echo the framed message with a terminating newline
-  auto &state = clients[fd];
-  state.write_buf += clean_msg + "\n";
+  if (msg_view.empty()) {
+    return;
+  }
+
+  // Phase 10: Zero-copy execution of Redis commands (PING, SET, GET, DEL)
+  std::string response = Protocol::execute_command(msg_view);
+  if (!response.empty()) {
+    auto &state = clients[fd];
+    state.write_buf += response;
+  }
 }
 
 void Server::handle_write(int fd) {
