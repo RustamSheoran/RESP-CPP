@@ -117,6 +117,9 @@ void Server::handle_read(int fd) {
     ssize_t written = write(fd, state.write_buf.data(), state.write_buf.size());
     if (written > 0) {
       state.write_buf.erase(0, written);
+    } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+      close_client(fd);
+      return;
     }
 
     if (!state.write_buf.empty()) {
@@ -165,5 +168,6 @@ void Server::close_client(int fd) {
   epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
   close(fd);
   clients.erase(fd);
+  printf("client %d disconnected\n", fd);
 }
 

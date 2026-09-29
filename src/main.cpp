@@ -1,9 +1,13 @@
 #include "server.h"
+#include <csignal>
 #include <iostream>
 
 constexpr int PORT = 6380;
 
 int main() {
+  // Phase 9: Ignore SIGPIPE so dead socket writes return -1 (EPIPE) instead of crashing the process
+  signal(SIGPIPE, SIG_IGN);
+
   try {
     Server server(PORT);
     server.run();
