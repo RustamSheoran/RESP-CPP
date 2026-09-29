@@ -93,13 +93,27 @@ void Server::handle_read(int fd) {
   ssize_t count = read(fd, buf, sizeof(buf));
 
   if (count <= 0) {
+    if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      return;
+    }
     close_client(fd);
-  } else {
-    auto &state = clients[fd];
-    state.read_buf.append(buf, count);
-    state.write_buf += state.read_buf;
-    state.read_buf.clear();
+    return;
+  }
 
+  auto &state = clients[fd];
+  state.read_buf.append(buf, count);
+
+  // Phase 6: Delimiter-based application message framing ('\n')
+  size_t pos;
+  while ((pos = state.read_buf.find('\n')) != std::string::npos) {
+    std::string message = state.read_buf.substr(0, pos);
+    state.read_buf.erase(0, pos + 1);
+
+    handle_message(fd, message);
+  }
+
+  // Attempt to write out queued responses
+  if (!state.write_buf.empty()) {
     ssize_t written = write(fd, state.write_buf.data(), state.write_buf.size());
     if (written > 0) {
       state.write_buf.erase(0, written);
@@ -114,6 +128,18 @@ void Server::handle_read(int fd) {
   }
 }
 
+void Server::handle_message(int fd, const std::string &message) {
+  // Strip trailing carriage return if present (e.g. \r\n from telnet/redis clients)
+  std::string clean_msg = message;
+  if (!clean_msg.empty() && clean_msg.back() == '\r') {
+    clean_msg.pop_back();
+  }
+
+  // For Phase 6: echo the framed message with a terminating newline
+  auto &state = clients[fd];
+  state.write_buf += clean_msg + "\n";
+}
+
 void Server::handle_write(int fd) {
   if (clients.find(fd) == clients.end())
     return;
@@ -122,6 +148,9 @@ void Server::handle_write(int fd) {
   ssize_t written = write(fd, state.write_buf.data(), state.write_buf.size());
   if (written > 0) {
     state.write_buf.erase(0, written);
+  } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+    close_client(fd);
+    return;
   }
 
   if (state.write_buf.empty()) {
@@ -137,3 +166,4 @@ void Server::close_client(int fd) {
   close(fd);
   clients.erase(fd);
 }
+

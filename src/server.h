@@ -14,6 +14,7 @@ private:
     void accept_clients();
     void handle_read(int client_fd);
     void handle_write(int client_fd);
+    void handle_message(int client_fd, const std::string &message);
     void close_client(int client_fd);
 
     int port;
