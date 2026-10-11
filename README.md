@@ -332,10 +332,11 @@ Measured at high precision (`--precision 3`) with 50 parallel clients over 10-se
 
 ---
 
-**Resume snippet**
+### 📄 Resume Snippet
 
-**RESP-CPP** | C++17, Linux epoll, POSIX sockets, TCP, RESP protocol, ASan/UBSan, Valkey benchmarking | Blog: https://medium.com/@rustam98137/i-was-bored-and-had-free-time-so-i-built-redis-from-scratch-957a17b697c5 | GitHub: https://github.com/RustamSheoran/RESP-CPP
+**RESP-CPP** | **C++17**, **Linux `epoll`**, **POSIX Sockets**, **TCP**, **RESP Protocol**, **ASan/UBSan**, **Valkey Benchmarking**  
+🔗 [**Medium Architecture Blog**](https://medium.com/@rustam98137/i-was-bored-and-had-free-time-so-i-built-redis-from-scratch-957a17b697c5) | 💻 [**GitHub Repository**](https://github.com/RustamSheoran/RESP-CPP)
 
-- Designed and built a single-threaded, non-blocking Redis-compatible key-value server (PING/SET/GET/DEL) in C++17 using Linux epoll and POSIX sockets, with a dual-mode RESP/inline parser, zero-copy `string_view` RESP argument parsing, and EPOLLOUT write backpressure.
-- Benchmarked against Valkey 9.1.2 with `valkey-benchmark` and CPU pinning (`taskset`, i5-4430): ~113K req/s over 500 s runs, within 2.7% of Valkey, with p50 latency of 0.223 ms vs 0.215 ms.
-- Hardened against Linux edge cases and malformed input: EMFILE spin handling, SIGPIPE, TCP_NODELAY, bounded frame sizes, 10 MB buffer caps, and idle timeouts; ASan/UBSan clean across test and endurance runs.
+- Designed and built a **single-threaded, non-blocking** Redis-compatible key-value server (`PING`/`SET`/`GET`/`DEL`) in **C++17** using **Linux `epoll`** and **POSIX sockets**, featuring a **dual-mode RESP/inline parser**, **zero-copy `std::string_view`** argument extraction, and dynamic **`EPOLLOUT` write backpressure**.
+- Benchmarked against **Valkey 9.1.2** with `valkey-benchmark` under strict CPU core pinning (`taskset`, Intel i5-4430): achieved **~113K req/s** sustained over **500s endurance runs** (**within 2.7% of Valkey**), matching median latency (**p50: 0.223 ms vs 0.215 ms**).
+- Hardened against Linux kernel edge cases and malformed input: resolved **`EMFILE` connection spin** via reserve file descriptors, shielded against **`SIGPIPE`** crashes, eliminated delayed ACKs with **`TCP_NODELAY`**, enforced **bounded frame allocations** and **10 MB buffer caps**, and implemented **idle connection sweeps**; verified **100% clean under ASan/UBSan**.
