@@ -329,3 +329,13 @@ Measured at high precision (`--precision 3`) with 50 parallel clients over 10-se
 - [Linux man pages: epoll(7)](https://man7.org/linux/man-pages/man7/epoll.7.html)
 - [Google Sanitizers Wiki](https://github.com/google/sanitizers/wiki/AddressSanitizer)
 - [Build Your Own Redis](https://build-your-own.org/redis/)
+
+---
+
+**Resume snippet**
+
+**RESP-CPP** | C++17, Linux epoll, POSIX sockets, TCP, RESP protocol, ASan/UBSan, Valkey benchmarking | Blog: https://medium.com/@rustam98137/i-was-bored-and-had-free-time-so-i-built-redis-from-scratch-957a17b697c5 | GitHub: https://github.com/RustamSheoran/RESP-CPP
+
+- Designed and built a single-threaded, non-blocking Redis-compatible key-value server (PING/SET/GET/DEL) in C++17 using Linux epoll and POSIX sockets, with a dual-mode RESP/inline parser, zero-copy `string_view` RESP argument parsing, and EPOLLOUT write backpressure.
+- Benchmarked against Valkey 9.1.2 with `valkey-benchmark` and CPU pinning (`taskset`, i5-4430): ~113K req/s over 500 s runs, within 2.7% of Valkey, with p50 latency of 0.223 ms vs 0.215 ms.
+- Hardened against Linux edge cases and malformed input: EMFILE spin handling, SIGPIPE, TCP_NODELAY, bounded frame sizes, 10 MB buffer caps, and idle timeouts; ASan/UBSan clean across test and endurance runs.
