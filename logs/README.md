@@ -1,6 +1,6 @@
 # Benchmark Logs & Tail Latency Profiles
 
-This directory contains the raw and structured benchmark execution logs comparing **Valkey 9.1.2** against **RESP-CPP** across multiple durations (60s, 120s, 500s) and high-precision tail latency distributions (p50, p75, p90, p95, p99, p99.9, p99.99).
+This directory contains the condensed progression logs and structured benchmark execution logs comparing **Valkey 9.1.2** against **RESP-CPP** across multiple durations (60s, 120s, 500s) and high-precision tail latency distributions (p50, p75, p87.5, p95, p99, p99.9, p99.99).
 
 ---
 
@@ -24,14 +24,14 @@ This directory contains the raw and structured benchmark execution logs comparin
 
 | File | Description | Target | Duration |
 | :--- | :--- | :--- | :--- |
-| [`valkey_60s.log`](file:///home/rustam/Projects/resp-cpp/logs/valkey_60s.log) | 60-second microbenchmark progression & throughput | Valkey 9.1.2 | 60 seconds |
-| [`resp_60s.log`](file:///home/rustam/Projects/resp-cpp/logs/resp_60s.log) | 60-second microbenchmark progression & throughput | RESP-CPP | 60 seconds |
-| [`valkey_120s.log`](file:///home/rustam/Projects/resp-cpp/logs/valkey_120s.log) | 120-second soak test progression & throughput | Valkey 9.1.2 | 120 seconds |
-| [`resp_120s.log`](file:///home/rustam/Projects/resp-cpp/logs/resp_120s.log) | 120-second soak test progression & throughput | RESP-CPP | 120 seconds |
-| [`valkey_500s.log`](file:///home/rustam/Projects/resp-cpp/logs/valkey_500s.log) | 500-second sustained endurance benchmark | Valkey 9.1.2 | 500 seconds |
-| [`resp_500s.log`](file:///home/rustam/Projects/resp-cpp/logs/resp_500s.log) | 500-second sustained endurance benchmark | RESP-CPP | 500 seconds |
-| [`valkey_percentiles.log`](file:///home/rustam/Projects/resp-cpp/logs/valkey_percentiles.log) | Complete cumulative percentile latency distribution | Valkey 9.1.2 | High Precision |
-| [`resp_percentiles.log`](file:///home/rustam/Projects/resp-cpp/logs/resp_percentiles.log) | Complete cumulative percentile latency distribution | RESP-CPP | High Precision |
+| [`valkey_60s.log`](./valkey_60s.log) | 60-second microbenchmark progression & throughput | Valkey 9.1.2 | 60 seconds |
+| [`resp_60s.log`](./resp_60s.log) | 60-second microbenchmark progression & throughput | RESP-CPP | 60 seconds |
+| [`valkey_120s.log`](./valkey_120s.log) | 120-second soak test progression & throughput | Valkey 9.1.2 | 120 seconds |
+| [`resp_120s.log`](./resp_120s.log) | 120-second soak test progression & throughput | RESP-CPP | 120 seconds |
+| [`valkey_500s.log`](./valkey_500s.log) | 500-second sustained endurance benchmark | Valkey 9.1.2 | 500 seconds |
+| [`resp_500s.log`](./resp_500s.log) | 500-second sustained endurance benchmark | RESP-CPP | 500 seconds |
+| [`valkey_percentiles.log`](./valkey_percentiles.log) | Complete cumulative percentile latency distribution | Valkey 9.1.2 | High Precision |
+| [`resp_percentiles.log`](./resp_percentiles.log) | Complete cumulative percentile latency distribution | RESP-CPP | High Precision |
 
 ---
 
@@ -43,15 +43,15 @@ All latency distributions measured with 50 parallel clients at `--precision 3`:
 
 | Percentile | Valkey 9.1.2 Latency | RESP-CPP Latency | Difference |
 | :--- | :--- | :--- | :--- |
-| **p50 (Median)** | 0.215 ms | **0.215 ms** | Identical (0.000 ms) |
-| **p75** | 0.231 ms | **0.239 ms** | +0.008 ms |
-| **p90 (approx)** | 0.247 ms | **0.255 ms** | +0.008 ms |
-| **p95** | 0.271 ms | **0.279 ms** | +0.008 ms |
-| **p99** | 0.319 ms | **0.327 ms** | +0.008 ms |
-| **p99.9** | 0.479 ms | **0.767 ms** | +0.288 ms |
-| **p99.99** | 0.911 ms | **1.927 ms** | +1.016 ms |
-| **Max** | 1.895 ms | **1.983 ms** | +0.088 ms |
-| **Throughput** | 115,051.60 req/s | **115,831.10 req/s** | **+0.68% (RESP-CPP faster)** |
+| **p50 (Median)** | 0.215 ms | 0.215 ms | Identical (0.000 ms) |
+| **p75** | 0.231 ms | 0.239 ms | +0.008 ms |
+| **p87.5** | 0.247 ms | 0.255 ms | +0.008 ms |
+| **p95** | 0.271 ms | 0.279 ms | +0.008 ms |
+| **p99** | 0.319 ms | 0.327 ms | +0.008 ms |
+| **p99.9** | 0.479 ms | 0.767 ms | +0.288 ms |
+| **p99.99** | 0.911 ms | 1.927 ms | +1.016 ms |
+| **Max** | 1.895 ms | 1.983 ms | +0.088 ms |
+| **Throughput** | 115,051.60 req/s | 115,831.10 req/s | +0.68% |
 
 ---
 
@@ -59,15 +59,15 @@ All latency distributions measured with 50 parallel clients at `--precision 3`:
 
 | Percentile | Valkey 9.1.2 Latency | RESP-CPP Latency | Difference |
 | :--- | :--- | :--- | :--- |
-| **p50 (Median)** | 0.215 ms | **0.215 ms** | Identical (0.000 ms) |
-| **p75** | 0.231 ms | **0.231 ms** | Identical (0.000 ms) |
-| **p90 (approx)** | 0.247 ms | **0.247 ms** | Identical (0.000 ms) |
-| **p95** | 0.279 ms | **0.271 ms** | **-0.008 ms (RESP-CPP faster)** |
-| **p99** | 0.335 ms | **0.311 ms** | **-0.024 ms (RESP-CPP faster)** |
-| **p99.9** | 1.855 ms | **0.767 ms** | **-1.088 ms (RESP-CPP faster)** |
-| **p99.99** | 3.471 ms | **2.487 ms** | **-0.984 ms (RESP-CPP faster)** |
-| **Max** | 5.615 ms | **4.151 ms** | **-1.464 ms (RESP-CPP faster)** |
-| **Throughput** | 113,622.80 req/s | **115,592.60 req/s** | **+1.73% (RESP-CPP faster)** |
+| **p50 (Median)** | 0.215 ms | 0.215 ms | Identical (0.000 ms) |
+| **p75** | 0.231 ms | 0.231 ms | Identical (0.000 ms) |
+| **p87.5** | 0.247 ms | 0.247 ms | Identical (0.000 ms) |
+| **p95** | 0.279 ms | 0.271 ms | -0.008 ms |
+| **p99** | 0.335 ms | 0.311 ms | -0.024 ms |
+| **p99.9** | 1.855 ms | 0.767 ms | -1.088 ms |
+| **p99.99** | 3.471 ms | 2.487 ms | -0.984 ms |
+| **Max** | 5.615 ms | 4.151 ms | -1.464 ms |
+| **Throughput** | 113,622.80 req/s | 115,592.60 req/s | +1.73% |
 
 ---
 
@@ -75,15 +75,15 @@ All latency distributions measured with 50 parallel clients at `--precision 3`:
 
 | Percentile | Valkey 9.1.2 Latency | RESP-CPP Latency | Difference |
 | :--- | :--- | :--- | :--- |
-| **p50 (Median)** | 0.223 ms | **0.215 ms** | **-0.008 ms (RESP-CPP faster)** |
-| **p75** | 0.239 ms | **0.239 ms** | Identical (0.000 ms) |
-| **p90 (approx)** | 0.255 ms | **0.255 ms** | Identical (0.000 ms) |
-| **p95** | 0.279 ms | **0.279 ms** | Identical (0.000 ms) |
-| **p99** | 0.335 ms | **0.327 ms** | **-0.008 ms (RESP-CPP faster)** |
-| **p99.9** | 1.895 ms | **1.407 ms** | **-0.488 ms (RESP-CPP faster)** |
-| **p99.99** | 2.503 ms | **2.487 ms** | **-0.016 ms (RESP-CPP faster)** |
-| **Max** | 4.095 ms | **2.727 ms** | **-1.368 ms (RESP-CPP faster)** |
-| **Throughput** | 113,209.20 req/s | **117,190.70 req/s** | **+3.52% (RESP-CPP faster)** |
+| **p50 (Median)** | 0.223 ms | 0.215 ms | -0.008 ms |
+| **p75** | 0.239 ms | 0.239 ms | Identical (0.000 ms) |
+| **p87.5** | 0.255 ms | 0.255 ms | Identical (0.000 ms) |
+| **p95** | 0.279 ms | 0.279 ms | Identical (0.000 ms) |
+| **p99** | 0.335 ms | 0.327 ms | -0.008 ms |
+| **p99.9** | 1.895 ms | 1.407 ms | -0.488 ms |
+| **p99.99** | 2.503 ms | 2.487 ms | -0.016 ms |
+| **Max** | 4.095 ms | 2.727 ms | -1.368 ms |
+| **Throughput** | 113,209.20 req/s | 117,190.70 req/s | +3.52% |
 
 ---
 
@@ -91,15 +91,15 @@ All latency distributions measured with 50 parallel clients at `--precision 3`:
 
 | Percentile | Valkey 9.1.2 Latency | RESP-CPP Latency | Difference |
 | :--- | :--- | :--- | :--- |
-| **p50 (Median)** | 0.223 ms | **0.223 ms** | Identical (0.000 ms) |
-| **p75** | 0.231 ms | **0.255 ms** | +0.024 ms |
-| **p90 (approx)** | 0.247 ms | **0.303 ms** | +0.056 ms |
-| **p95** | 0.271 ms | **0.551 ms** | +0.280 ms |
-| **p99** | 0.303 ms | **1.903 ms** | +1.600 ms |
-| **p99.9** | 0.479 ms | **3.703 ms** | +3.224 ms |
-| **p99.99** | 2.343 ms | **5.743 ms** | +3.400 ms |
-| **Max** | 3.175 ms | **6.799 ms** | +3.624 ms |
-| **Throughput** | 116,295.30 req/s | **95,191.04 req/s** | -18.1% |
+| **p50 (Median)** | 0.223 ms | 0.223 ms | Identical (0.000 ms) |
+| **p75** | 0.231 ms | 0.255 ms | +0.024 ms |
+| **p87.5** | 0.247 ms | 0.303 ms | +0.056 ms |
+| **p95** | 0.271 ms | 0.551 ms | +0.280 ms |
+| **p99** | 0.303 ms | 1.903 ms | +1.600 ms |
+| **p99.9** | 0.479 ms | 3.703 ms | +3.224 ms |
+| **p99.99** | 2.343 ms | 5.743 ms | +3.400 ms |
+| **Max** | 3.175 ms | 6.799 ms | +3.624 ms |
+| **Throughput** | 116,295.30 req/s | 95,191.04 req/s | -18.1% |
 
 ---
 

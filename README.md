@@ -200,7 +200,7 @@ nc localhost 6380
 
 ## 📊 Performance Benchmarks (RESP-CPP vs. Valkey 9.1.2)
 
-A rigorous head-to-head performance evaluation was conducted using `valkey-benchmark` comparing **RESP-CPP** against enterprise **Valkey 9.1.2** (the high-performance Redis fork). Tests measured sustained throughput (QPS) and exact tail latencies across 60s, 120s, and 500s runs under strict Linux CPU core affinity isolation.
+A rigorous head-to-head performance evaluation was conducted using `valkey-benchmark` comparing **RESP-CPP** against **Valkey 9.1.2** (the open-source high-performance Redis fork). Tests measured sustained throughput (QPS) and exact tail latencies across 60s, 120s, and 500s runs under strict Linux CPU core affinity isolation.
 
 ### 🖥️ Hardware Profile & Test Setup
 
@@ -248,52 +248,64 @@ A rigorous head-to-head performance evaluation was conducted using `valkey-bench
 
 ---
 
-### ⏱️ High-Precision Tail Latency Distribution (p50, p90, p99, p99.9, p99.99)
+### ⏱️ High-Precision Tail Latency Distribution (p50, p87.5, p95, p99, p99.9, p99.99)
 
-Measured at high precision (`--precision 3`) with 50 parallel clients:
+Measured at high precision (`--precision 3`) with 50 parallel clients over 10-second test intervals:
 
 | Command | Metric | Valkey 9.1.2 | RESP-CPP | Differential |
 | :--- | :--- | :--- | :--- | :--- |
-| **`PING_INLINE`** | **Throughput** | 115,051.60 req/s | **115,831.10 req/s** | **+0.68% (RESP-CPP faster)** |
-| | **p50 (Median)** | 0.215 ms | **0.215 ms** | Identical (0.000 ms) |
-| | **p75** | 0.231 ms | **0.239 ms** | +0.008 ms |
-| | **p90** | 0.247 ms | **0.255 ms** | +0.008 ms |
-| | **p95** | 0.271 ms | **0.279 ms** | +0.008 ms |
-| | **p99** | 0.319 ms | **0.327 ms** | +0.008 ms |
-| | **p99.9** | 0.479 ms | **0.767 ms** | +0.288 ms |
-| | **p99.99** | 0.911 ms | **1.927 ms** | +1.016 ms |
-| | **Max** | 1.895 ms | **1.983 ms** | +0.088 ms |
-| **`PING_MBULK`** | **Throughput** | 113,622.80 req/s | **115,592.60 req/s** | **+1.73% (RESP-CPP faster)** |
-| | **p50 (Median)** | 0.215 ms | **0.215 ms** | Identical (0.000 ms) |
-| | **p75** | 0.231 ms | **0.231 ms** | Identical (0.000 ms) |
-| | **p90** | 0.247 ms | **0.247 ms** | Identical (0.000 ms) |
-| | **p95** | 0.279 ms | **0.271 ms** | **-0.008 ms (RESP-CPP faster)** |
-| | **p99** | 0.335 ms | **0.311 ms** | **-0.024 ms (RESP-CPP faster)** |
-| | **p99.9** | 1.855 ms | **0.767 ms** | **-1.088 ms (RESP-CPP faster)** |
-| | **p99.99** | 3.471 ms | **2.487 ms** | **-0.984 ms (RESP-CPP faster)** |
-| | **Max** | 5.615 ms | **4.151 ms** | **-1.464 ms (RESP-CPP faster)** |
-| **`SET`** | **Throughput** | 113,209.20 req/s | **117,190.70 req/s** | **+3.52% (RESP-CPP faster)** |
-| | **p50 (Median)** | 0.223 ms | **0.215 ms** | **-0.008 ms (RESP-CPP faster)** |
-| | **p75** | 0.239 ms | **0.239 ms** | Identical (0.000 ms) |
-| | **p90** | 0.255 ms | **0.255 ms** | Identical (0.000 ms) |
-| | **p95** | 0.279 ms | **0.279 ms** | Identical (0.000 ms) |
-| | **p99** | 0.335 ms | **0.327 ms** | **-0.008 ms (RESP-CPP faster)** |
-| | **p99.9** | 1.895 ms | **1.407 ms** | **-0.488 ms (RESP-CPP faster)** |
-| | **p99.99** | 2.503 ms | **2.487 ms** | **-0.016 ms (RESP-CPP faster)** |
-| | **Max** | 4.095 ms | **2.727 ms** | **-1.368 ms (RESP-CPP faster)** |
-| **`GET`** | **Throughput** | 116,295.30 req/s | **95,191.04 req/s** | -18.1% |
-| | **p50 (Median)** | 0.223 ms | **0.223 ms** | Identical (0.000 ms) |
-| | **p75** | 0.231 ms | **0.255 ms** | +0.024 ms |
-| | **p90** | 0.247 ms | **0.303 ms** | +0.056 ms |
-| | **p95** | 0.271 ms | **0.551 ms** | +0.280 ms |
-| | **p99** | 0.303 ms | **1.903 ms** | +1.600 ms |
-| | **p99.9** | 0.479 ms | **3.703 ms** | +3.224 ms |
-| | **p99.99** | 2.343 ms | **5.743 ms** | +3.400 ms |
-| | **Max** | 3.175 ms | **6.799 ms** | +3.624 ms |
+| **`PING_INLINE`** | **Throughput** | 115,051.60 req/s | 115,831.10 req/s | +0.68% |
+| | **p50 (Median)** | 0.215 ms | 0.215 ms | Identical (0.000 ms) |
+| | **p75** | 0.231 ms | 0.239 ms | +0.008 ms |
+| | **p87.5** | 0.247 ms | 0.255 ms | +0.008 ms |
+| | **p95** | 0.271 ms | 0.279 ms | +0.008 ms |
+| | **p99** | 0.319 ms | 0.327 ms | +0.008 ms |
+| | **p99.9** | 0.479 ms | 0.767 ms | +0.288 ms |
+| | **p99.99** | 0.911 ms | 1.927 ms | +1.016 ms |
+| | **Max** | 1.895 ms | 1.983 ms | +0.088 ms |
+| **`PING_MBULK`** | **Throughput** | 113,622.80 req/s | 115,592.60 req/s | +1.73% |
+| | **p50 (Median)** | 0.215 ms | 0.215 ms | Identical (0.000 ms) |
+| | **p75** | 0.231 ms | 0.231 ms | Identical (0.000 ms) |
+| | **p87.5** | 0.247 ms | 0.247 ms | Identical (0.000 ms) |
+| | **p95** | 0.279 ms | 0.271 ms | -0.008 ms |
+| | **p99** | 0.335 ms | 0.311 ms | -0.024 ms |
+| | **p99.9** | 1.855 ms | 0.767 ms | -1.088 ms |
+| | **p99.99** | 3.471 ms | 2.487 ms | -0.984 ms |
+| | **Max** | 5.615 ms | 4.151 ms | -1.464 ms |
+| **`SET`** | **Throughput** | 113,209.20 req/s | 117,190.70 req/s | +3.52% |
+| | **p50 (Median)** | 0.223 ms | 0.215 ms | -0.008 ms |
+| | **p75** | 0.239 ms | 0.239 ms | Identical (0.000 ms) |
+| | **p87.5** | 0.255 ms | 0.255 ms | Identical (0.000 ms) |
+| | **p95** | 0.279 ms | 0.279 ms | Identical (0.000 ms) |
+| | **p99** | 0.335 ms | 0.327 ms | -0.008 ms |
+| | **p99.9** | 1.895 ms | 1.407 ms | -0.488 ms |
+| | **p99.99** | 2.503 ms | 2.487 ms | -0.016 ms |
+| | **Max** | 4.095 ms | 2.727 ms | -1.368 ms |
+| **`GET`** | **Throughput** | 116,295.30 req/s | 95,191.04 req/s | -18.1% |
+| | **p50 (Median)** | 0.223 ms | 0.223 ms | Identical (0.000 ms) |
+| | **p75** | 0.231 ms | 0.255 ms | +0.024 ms |
+| | **p87.5** | 0.247 ms | 0.303 ms | +0.056 ms |
+| | **p95** | 0.271 ms | 0.551 ms | +0.280 ms |
+| | **p99** | 0.303 ms | 1.903 ms | +1.600 ms |
+| | **p99.9** | 0.479 ms | 3.703 ms | +3.224 ms |
+| | **p99.99** | 2.343 ms | 5.743 ms | +3.400 ms |
+| | **Max** | 3.175 ms | 6.799 ms | +3.624 ms |
 
-> **Analysis on Tail Latencies & Workload Dynamics:** In sustained endurance benchmarks (500s, 120s, and 60s), RESP-CPP delivers rock-solid throughput within 0.4%–2.7% of enterprise Valkey across all commands, matching p50 latency (0.215–0.223 ms) with identical stability. In the single-shot micro-run for tail latency percentiles, SET (+3.5%) and PING (+0.7% to +1.7%) matched or outperformed Valkey; the individual GET percentile run measured 95k req/s (-18%) due to transient loopback socket queue and kernel scheduler jitter during that isolated sample, whereas the sustained 500-second endurance run achieved 113,122 req/s (-2.5%) and the 60-second run achieved 116,059 req/s (-0.4%), confirming steady-state parity with Valkey.
+> **Analysis on Tail Latencies, Microbenchmark Variance & Workload Limitations:**
 >
-> All raw progression logs, high-precision latency percentiles, and test runner artifacts are preserved in the [`logs/`](./logs/) directory.
+> 1. **Run-to-Run Variance:** Single short (10-second) benchmark runs are susceptible to ambient noise ($\pm 2\text{--}3\%$). For instance, Valkey’s own SET throughput varied between 113,209 req/s in the 10s run and 116,218 req/s in the 500s run (a 2.7% swing). Thus, isolated differences like +0.68% or +3.52% reflect expected run-to-run variance rather than a structural speed advantage.
+> 2. **Tail Latency Reality:** While median latency is identical across both servers (p50: 0.215–0.223 ms), RESP-CPP exhibits higher tail latency on inline commands at extreme percentiles (`PING_INLINE` p99.9 of 0.767 ms vs Valkey's 0.479 ms; p99.99 of 1.927 ms vs 0.911 ms).
+> 3. **The GET Microbenchmark Variance & 5-Run Verification:** The initial 10s GET run measured 95,191 req/s with 3% of requests exceeding 1 ms, alongside periodic dips to ~106k in the 500s run. To verify empirical stability, five consecutive 10-second GET runs were executed under identical CPU pinning:
+>    - **Run 1:** 113,766 req/s (p50: 0.223 ms)
+>    - **Run 2:** 111,024 req/s (p50: 0.231 ms)
+>    - **Run 3:** 114,120 req/s (p50: 0.223 ms)
+>    - **Run 4:** 112,129 req/s (p50: 0.223 ms)
+>    - **Run 5:** 108,065 req/s (p50: 0.239 ms)
+>    - **5-Run Summary:** Min = 108,065 req/s | Max = 114,120 req/s | **Median = 112,129 req/s** (Spread: 6,055 req/s).  
+>    Under C++17, looking up keys in `std::unordered_map` constructs a temporary `std::string(tokens[1])` per query, which incurs minor dynamic heap allocator contention during 100k+ QPS bursts compared to Valkey's zero-allocation C dictionary.
+> 4. **Loopback Syscall Bottleneck:** Under `-P 1` (unpipelined, single-request/reply) on a single CPU core, both engines plateau around ~115k req/s regardless of command. At this concurrency, throughput is primarily constrained by Linux loopback socket system calls (`epoll_wait`, `read`, `write`) and kernel context switches rather than internal engine logic. High-concurrency workloads using pipelining (`-P 16`), large randomized keyspaces (`-r 1000000`), and variable payload sizes (`-d 256`) are necessary to stress pure reactor efficiency and cache locality.
+>
+> All condensed progression logs (sampled periodic snapshots), high-precision latency percentiles, and test runner artifacts are preserved in the [`logs/`](./logs/) directory.
 
 ---
 
