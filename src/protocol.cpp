@@ -80,7 +80,12 @@ static bool parse_resp_multibulk(const std::string &buf, size_t cursor, size_t &
         consumed = line_end + 2 - cursor;
         return false;
     }
-    if (num_args <= 0) {
+    if (num_args < 0 || num_args > MAX_MULTIBULK_ARGS) {
+        protocol_error = true;
+        consumed = line_end + 2 - cursor;
+        return false;
+    }
+    if (num_args == 0) {
         consumed = line_end + 2 - cursor;
         return true;
     }
@@ -103,7 +108,9 @@ static bool parse_resp_multibulk(const std::string &buf, size_t cursor, size_t &
             consumed = bulk_line_end + 2 - cursor;
             return false;
         }
-        if (bulk_len < 0) {
+        if (bulk_len < 0 || bulk_len > MAX_BULK_LEN) {
+            protocol_error = true;
+            consumed = bulk_line_end + 2 - cursor;
             return false;
         }
         pos = bulk_line_end + 2;
@@ -111,6 +118,8 @@ static bool parse_resp_multibulk(const std::string &buf, size_t cursor, size_t &
             return false;
         }
         if (buf[pos + bulk_len] != '\r' || buf[pos + bulk_len + 1] != '\n') {
+            protocol_error = true;
+            consumed = pos + bulk_len + 2 - cursor;
             return false;
         }
         parsed.emplace_back(buf.data() + pos, bulk_len);
@@ -142,18 +151,12 @@ static void execute_tokens(const std::vector<std::string_view> &tokens, std::str
     }
 
     if (equals_ci(cmd, "SET")) {
-        if (tokens.size() < 3) {
+        if (tokens.size() != 3) {
             write_buf += "-ERR wrong number of arguments for 'set' command\r\n";
             return;
         }
         std::string key(tokens[1]);
         std::string val(tokens[2]);
-        if (tokens.size() > 3) {
-            for (size_t i = 3; i < tokens.size(); ++i) {
-                val += " ";
-                val.append(tokens[i].data(), tokens[i].size());
-            }
-        }
         db[std::move(key)] = std::move(val);
         write_buf += "+OK\r\n";
         return;
@@ -226,6 +229,7 @@ ParseResult parse_and_execute(const std::string &buf, size_t &cursor, std::strin
         bool success = parse_resp_multibulk(buf, cursor, consumed, args, protocol_error);
         if (protocol_error) {
             cursor += consumed;
+            should_close = true;
             write_buf += "-ERR Protocol error: invalid multibulk length\r\n";
             return ParseResult::SUCCESS;
         }

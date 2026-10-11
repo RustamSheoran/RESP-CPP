@@ -1,6 +1,6 @@
 # Documentation: `src/protocol.h`
 
-The [`src/protocol.h`](file:///home/rustam/Projects/resp-cpp/src/protocol.h) header declares the protocol parser interface and status result types.
+The [`src/protocol.h`](file:///home/rustam/Projects/resp-cpp/src/protocol.h) header declares the protocol parser interface, security bounds constants, and status result types.
 
 ---
 
@@ -25,32 +25,41 @@ Opens the `Protocol` namespace boundary to encapsulate parser functions and data
 ### Line 7: *(Empty Line)*
 Whitespace separator for visual clarity.
 
-### Line 8: `enum class ParseResult {`
+### Line 8: `constexpr long long MAX_MULTIBULK_ARGS = 1024 * 1024;`
+Defines the maximum allowed number of multibulk arguments ($1,048,576$) per command frame, preventing memory exhaustion and denial-of-service crashes from maliciously large array counts.
+
+### Line 9: `constexpr long long MAX_BULK_LEN = 512 * 1024 * 1024;`
+Defines the maximum allowed length ($512\text{ MB}$) for individual bulk string arguments matching standard Redis protocol limits, rejecting oversized payload declarations early.
+
+### Line 10: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 11: `enum class ParseResult {`
 Declares the scoped enumeration `ParseResult` for type-safe status reporting from the streaming parser.
 
-### Line 9: `    SUCCESS,`
+### Line 12: `    SUCCESS,`
 Indicates a full command frame was successfully extracted, parsed, and executed.
 
-### Line 10: `    NEED_MORE_DATA`
+### Line 13: `    NEED_MORE_DATA`
 Indicates that the buffer contains an incomplete command or truncated multibulk payload, signaling the reactor loop to wait for further incoming network packets.
 
-### Line 11: `};`
+### Line 14: `};`
 Terminates the `ParseResult` enumeration declaration.
 
-### Line 12: *(Empty Line)*
+### Line 15: *(Empty Line)*
 Whitespace separator for visual clarity.
 
-### Line 13: `ParseResult parse_and_execute(const std::string &buf, size_t &cursor, std::string &write_buf, bool &should_close);`
-Function declaration for `parse_and_execute`. Slices commands from `buf` starting at `cursor` (supporting both RESP multibulk arrays `*N\r\n...` and inline commands `\n`), executes commands with zero-copy argument views, appends serialized RESP replies directly into `write_buf`, advances `cursor` past consumed bytes, and sets `should_close = true` if `QUIT` was executed.
+### Line 16: `ParseResult parse_and_execute(const std::string &buf, size_t &cursor, std::string &write_buf, bool &should_close);`
+Function declaration for `parse_and_execute`. Slices commands from `buf` starting at `cursor` (supporting both RESP multibulk arrays `*N\r\n...` and inline commands `\n`), executes commands with zero-copy argument views, appends serialized RESP replies directly into `write_buf`, advances `cursor` past consumed bytes, and sets `should_close = true` if `QUIT` or a fatal protocol error occurred.
 
-### Line 14: *(Empty Line)*
+### Line 17: *(Empty Line)*
 Whitespace separator for visual clarity.
 
-### Line 15: `}`
+### Line 18: `}`
 Closes `namespace Protocol`.
 
-### Line 16: *(Empty Line)*
+### Line 19: *(Empty Line)*
 Whitespace separator for visual clarity.
 
-### Line 17: `#endif`
+### Line 20: `#endif`
 Terminates the `#ifndef PROTOCOL_H` header guard block.

@@ -8,15 +8,15 @@ Welcome to the comprehensive, line-by-line documentation for the **RESP-CPP** co
 
 | File | Purpose | Detailed Documentation |
 | :--- | :--- | :--- |
-| **`src/main.cpp`** | Process entry point, `SIGPIPE` ignore shield, runtime error handling, and reactor launch | [main.cpp.md](file:///home/rustam/Projects/resp-cpp/docs/main.cpp.md) |
-| **`src/server.h`** | `Server` class interface, epoll constants, `EMFILE` idle descriptor, and timeout parameters | [server.h.md](file:///home/rustam/Projects/resp-cpp/docs/server.h.md) |
-| **`src/server.cpp`** | Socket creation, `epoll` reactor loop, `TCP_NODELAY`, `EMFILE` spin cure, idle sweep, dynamic `EPOLLOUT`, and `QUIT` teardown | [server.cpp.md](file:///home/rustam/Projects/resp-cpp/docs/server.cpp.md) |
-| **`src/client.h`** | `ClientState` struct defining per-connection ingress, egress backpressure buffer, teardown flag, and timestamp | [client.h.md](file:///home/rustam/Projects/resp-cpp/docs/client.h.md) |
-| **`src/protocol.h`** | Protocol parser interface, `ParseResult` enum, and streaming `parse_and_execute()` function prototype | [protocol.h.md](file:///home/rustam/Projects/resp-cpp/docs/protocol.h.md) |
-| **`src/protocol.cpp`** | Dual-mode parser (RESP Multibulk Arrays `*N\r\n` + quote-aware inline commands), hash map database, and command dispatch | [protocol.cpp.md](file:///home/rustam/Projects/resp-cpp/docs/protocol.cpp.md) |
-| **`src/utils.h`** | Declaration of POSIX socket utility functions | [utils.h.md](file:///home/rustam/Projects/resp-cpp/docs/utils.h.md) |
-| **`src/utils.cpp`** | Implementation of `set_nonblocking()` using `fcntl(F_SETFL, O_NONBLOCK)` | [utils.cpp.md](file:///home/rustam/Projects/resp-cpp/docs/utils.cpp.md) |
-| **`Makefile`** | Multi-target build configuration (`release`, `asan`, `debug`) and compilation rules | [Makefile.md](file:///home/rustam/Projects/resp-cpp/docs/Makefile.md) |
+| **`src/main.cpp`** | Process entry point, `SIGPIPE` ignore shield, runtime error handling, and reactor launch | [main.cpp.md](./main.cpp.md) |
+| **`src/server.h`** | `Server` class interface, epoll constants, `EMFILE` idle descriptor, and timeout parameters | [server.h.md](./server.h.md) |
+| **`src/server.cpp`** | Socket creation, `epoll` reactor loop, `TCP_NODELAY`, `EMFILE` spin cure, idle sweep, dynamic `EPOLLOUT`, and `QUIT` teardown | [server.cpp.md](./server.cpp.md) |
+| **`src/client.h`** | `ClientState` struct defining per-connection ingress, egress backpressure buffer, teardown flag, and timestamp | [client.h.md](./client.h.md) |
+| **`src/protocol.h`** | Protocol parser interface, `ParseResult` enum, and streaming `parse_and_execute()` function prototype | [protocol.h.md](./protocol.h.md) |
+| **`src/protocol.cpp`** | Dual-mode parser (RESP Multibulk Arrays `*N\r\n` + quote-aware inline commands), hash map database, and command dispatch | [protocol.cpp.md](./protocol.cpp.md) |
+| **`src/utils.h`** | Declaration of POSIX socket utility functions | [utils.h.md](./utils.h.md) |
+| **`src/utils.cpp`** | Implementation of `set_nonblocking()` using `fcntl(F_SETFL, O_NONBLOCK)` | [utils.cpp.md](./utils.cpp.md) |
+| **`Makefile`** | Multi-target build configuration (`release`, `asan`, `debug`) and compilation rules | [Makefile.md](./Makefile.md) |
 
 ---
 

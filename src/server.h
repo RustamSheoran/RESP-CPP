@@ -2,6 +2,7 @@
 #define SERVER_H
 
 #include <unordered_map>
+#include <chrono>
 #include "client.h"
 
 class Server {
@@ -21,9 +22,11 @@ private:
     int epfd;
     int idle_fd;
     std::unordered_map<int, ClientState> clients;
+    std::chrono::steady_clock::time_point last_sweep;
     
     static constexpr int MAX_EVENTS = 64;
     static constexpr size_t MAX_WRITE_BUF_LEN = 10 * 1024 * 1024;
+    static constexpr size_t MAX_READ_BUF_LEN = 10 * 1024 * 1024;
     static constexpr int IDLE_TIMEOUT_SECONDS = 60;
 };
 

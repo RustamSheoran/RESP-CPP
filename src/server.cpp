@@ -13,7 +13,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-Server::Server(int port) : port(port), server_fd(-1), epfd(-1), idle_fd(-1) {
+Server::Server(int port) : port(port), server_fd(-1), epfd(-1), idle_fd(-1), last_sweep(std::chrono::steady_clock::now()) {
   server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
     throw std::runtime_error("Failed to create socket");
@@ -80,14 +80,17 @@ void Server::run() {
     }
 
     auto now = std::chrono::steady_clock::now();
-    std::vector<int> to_close;
-    for (const auto &[cfd, state] : clients) {
-      if (std::chrono::duration_cast<std::chrono::seconds>(now - state.last_active).count() > IDLE_TIMEOUT_SECONDS) {
-        to_close.push_back(cfd);
+    if (std::chrono::duration_cast<std::chrono::seconds>(now - last_sweep).count() >= 1) {
+      last_sweep = now;
+      std::vector<int> to_close;
+      for (const auto &[cfd, state] : clients) {
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - state.last_active).count() > IDLE_TIMEOUT_SECONDS) {
+          to_close.push_back(cfd);
+        }
       }
-    }
-    for (int cfd : to_close) {
-      close_client(cfd);
+      for (int cfd : to_close) {
+        close_client(cfd);
+      }
     }
   }
 }
@@ -139,6 +142,11 @@ void Server::handle_read(int fd) {
   auto &state = clients[fd];
   state.last_active = std::chrono::steady_clock::now();
   state.read_buf.append(buf, count);
+
+  if (state.read_buf.size() > MAX_READ_BUF_LEN) {
+    close_client(fd);
+    return;
+  }
 
   size_t cursor = 0;
   while (cursor < state.read_buf.size()) {
