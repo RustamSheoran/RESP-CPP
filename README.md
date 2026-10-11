@@ -2,24 +2,27 @@
 
 A high-performance, single-threaded, non-blocking Redis-compatible key-value store written in modern **C++17** using direct **Linux POSIX socket APIs** and the **`epoll`** event notification facility.
 
-This project implements an event-driven reactor core paired with an in-memory dictionary, a zero-copy command parser utilizing C++17 `std::string_view` to process Redis commands with minimal heap allocations, socket-level latency optimizations (`TCP_NODELAY`), dynamic backpressure buffering, and production-grade Slowloris DoS protection.
+This project implements an event-driven reactor core paired with an in-memory dictionary, a dual-mode protocol parser supporting both the official **RESP Multibulk Array protocol** (native `redis-cli` and standard drivers) and **quote-aware inline commands** (`nc`/`telnet`), socket-level latency optimizations (`TCP_NODELAY`), dynamic backpressure buffering, `EMFILE` connection exhaustion protection, and idle connection timeouts.
 
 ---
 
 ## ⚡ Key Features & Supported Commands
 
-- **Supported Redis Commands (Strict RESP Protocol):**
+- **Dual-Mode Protocol Engine:**
+  - **RESP Multibulk Arrays (`*N\r\n$<len>\r\n...`):** Full binary-safe support for standard Redis client drivers and the official `redis-cli` tool.
+  - **Quote-Aware Inline Commands:** Supports spaces inside quoted keys and values (`"hello world"`) with escape sequences (`\"`, `\\`) for direct testing via `nc` or `telnet`.
+- **Supported Redis Commands (Strict RESP Output):**
   - `PING [msg]` $\to$ Returns `+PONG\r\n` or bulk string `$<len>\r\n<msg>\r\n`.
-  - `SET <key> <value>` $\to$ Stores key-value pair in memory, returns `+OK\r\n` (supports spaces and quotes).
+  - `SET <key> <value>` $\to$ Stores key-value pair in memory, returns `+OK\r\n` (supports spaces and quotes in both keys and values).
   - `GET <key>` $\to$ Returns `$<len>\r\n<value>\r\n`, or `$-1\r\n` (nil) if key does not exist.
-  - `DEL <key> [<key2> ...]` $\to$ Deletes keys, returns integer count `:<count>\r\n`.
-  - `COMMAND` $\to$ Returns empty array `*0\r\n` for seamless handshake compatibility with standard Redis clients and CLI tools.
-  - `QUIT` $\to$ Returns `+OK\r\n` for graceful client teardown.
-- **Zero-Copy Command Tokenizer:** Uses C++17 `std::string_view` to slice command tokens directly from client buffers without allocating temporary heap strings during parsing.
+  - `DEL <key> [<key2> ...]` $\to$ Deletes one or more keys, returns integer count `:<count>\r\n`.
+  - `COMMAND` / `INFO` $\to$ Returns `*0\r\n` / `$0\r\n\r\n` for seamless handshake compatibility with standard Redis clients and CLI tools.
+  - `QUIT` $\to$ Flushes `+OK\r\n` and initiates clean TCP socket teardown.
 - **Single-Threaded Reactor Core:** Uses Linux `epoll` (`epoll_create1`, `epoll_ctl`, `epoll_wait`) to service thousands of concurrent client connections on a single thread with 0% idle CPU utilization.
 - **Low-Latency TCP Socket Tuning (`TCP_NODELAY`):** Disables Nagle's algorithm on all accepted client sockets, eliminating 40ms delayed-ACK stalls on request-response cycles.
-- **Dynamic Write Backpressure (`EPOLLOUT`):** Automatically registers `EPOLLOUT` when outgoing responses cannot be completely flushed in a single non-blocking `write()`, and deregisters it once the buffer drains to prevent CPU busy-spinning.
-- **Slowloris DoS Defense (Hardening):** Strictly caps maximum query length (`MAX_QUERY_LEN = 300 bytes`) to prevent memory exhaustion attacks from malicious slow-streaming clients.
+- **`EMFILE` Spin Prevention:** Reserves a dedicated spare file descriptor (`/dev/null`) to drain connection backlog queues when the process hits descriptor limits (`ulimit -n`), curing the classic level-triggered epoll 100% CPU spin.
+- **Idle Connection Timeout (Slowloris Mitigation):** Monotonically tracks client activity (`std::chrono::steady_clock`) and disconnects connections idle for longer than 60 seconds.
+- **Dynamic Write Backpressure (`EPOLLOUT`) & Memory Cap:** Automatically registers `EPOLLOUT` when outgoing responses cannot be completely flushed in a single non-blocking `write()`, and enforces a 10 MB backpressure ceiling to prevent memory exhaustion attacks.
 - **Resilient Connection Lifecycle & `SIGPIPE` Shield:** Explicitly ignores `SIGPIPE` (`signal(SIGPIPE, SIG_IGN)`) to prevent broken pipe signals from crashing the server when clients disconnect abruptly.
 - **Zero Console Overhead in Production:** Hot-path debug logging is conditionally compiled behind `#ifdef VERBOSE`, preventing console I/O from bottlenecking reactor throughput.
 - **Memory Sanitized:** Built and verified with Google's AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan) (`-fsanitize=address,undefined`), guaranteeing zero memory leaks and strict memory safety.
@@ -31,16 +34,36 @@ This project implements an event-driven reactor core paired with an in-memory di
 ```text
 resp-cpp/
 ├── Makefile          # Multi-target build system (release, asan, debug)
-├── README.md         # Architecture, design decisions, and benchmarks
+├── README.md         # Architecture, design decisions, and documentation
 ├── ROADMAP.md        # 11-Phase systems engineering roadmap
-├── benchmark.py      # Async multi-client load testing and latency suite
+├── docs/             # Line-by-line documentation for each source file
+│   ├── README.md
+│   ├── client.h.md
+│   ├── main.cpp.md
+│   ├── protocol.h.md
+│   ├── protocol.cpp.md
+│   ├── server.h.md
+│   ├── server.cpp.md
+│   ├── utils.h.md
+│   ├── utils.cpp.md
+│   └── Makefile.md
+├── logs/             # Raw benchmark execution logs and latency percentiles
+│   ├── README.md
+│   ├── valkey_60s.log
+│   ├── resp_60s.log
+│   ├── valkey_120s.log
+│   ├── resp_120s.log
+│   ├── valkey_500s.log
+│   ├── resp_500s.log
+│   ├── valkey_percentiles.log
+│   └── resp_percentiles.log
 └── src/
     ├── main.cpp      # Server entry point (SIGPIPE shield & port 6380 config)
-    ├── protocol.h    # Zero-copy command parser interface
-    ├── protocol.cpp  # In-memory database (hash map) & Redis command executor
-    ├── server.h      # Server class interface and epoll constants
+    ├── protocol.h    # Protocol parser interface & ParseResult enum
+    ├── protocol.cpp  # Dual-mode RESP/inline parser & in-memory key-value database
+    ├── server.h      # Server class interface, constants, and epoll structures
     ├── server.cpp    # Socket lifecycle, epoll loop, non-blocking I/O handlers
-    ├── client.h      # ClientState struct (fd, read_buf, write_buf)
+    ├── client.h      # ClientState struct (fd, read_buf, write_buf, timestamps)
     ├── utils.h       # Socket utility declarations
     └── utils.cpp     # POSIX socket utilities (fcntl O_NONBLOCK)
 ```
@@ -93,7 +116,32 @@ The server binds to `0.0.0.0` and listens for incoming TCP connections on port *
 
 ## 🧪 Testing & Verification
 
-### 1. Interactive Redis Commands via Netcat (`nc`)
+### 1. Official `redis-cli` Connection
+Connect using the standard Redis command-line interface:
+
+```bash
+redis-cli -p 6380
+```
+
+Execute Redis commands:
+```text
+127.0.0.1:6380> ping
+PONG
+127.0.0.1:6380> ping "hello world"
+"hello world"
+127.0.0.1:6380> set "user name" "rustam"
+OK
+127.0.0.1:6380> get "user name"
+"rustam"
+127.0.0.1:6380> del "user name"
+(integer) 1
+127.0.0.1:6380> get "user name"
+(nil)
+127.0.0.1:6380> quit
+OK
+```
+
+### 2. Interactive Inline Commands via Netcat (`nc`)
 
 Connect to the server:
 
@@ -101,7 +149,7 @@ Connect to the server:
 nc localhost 6380
 ```
 
-Execute Redis commands:
+Execute commands:
 ```text
 PING
 +PONG
@@ -110,34 +158,24 @@ PING "hello world"
 $11
 hello world
 
-SET user rustam
+SET "my key" "hello world"
 +OK
 
-GET user
-$6
-rustam
-
-SET greeting "hello world"
-+OK
-
-GET greeting
+GET "my key"
 $11
 hello world
 
-DEL user
+DEL "my key"
 :1
 
-GET user
+GET "my key"
 $-1
-
-COMMAND
-*0
 
 QUIT
 +OK
 ```
 
-### 2. Multi-Client Concurrency Test
+### 3. Multi-Client Concurrency Test
 
 Open two separate terminal windows:
 
@@ -153,71 +191,112 @@ nc localhost 6380
 2. In **Terminal 2**, read the key: `GET counter`.
 3. **Result:** Terminal 2 immediately receives `$3\r\n100\r\n`. Both clients run concurrently on the single-threaded epoll reactor without blocking.
 
-### 3. Slowloris DoS Defense Verification
+---
 
-Send an abusive query exceeding the 300-byte threshold without a newline delimiter:
+## 📊 Performance Benchmarks (RESP-CPP vs. Valkey 9.1.2)
 
-```bash
-python3 -c "import socket; s = socket.socket(); s.connect(('127.0.0.1', 6380)); s.sendall(b'A'*350); print('Disconnected:', len(s.recv(1024)) == 0)"
-```
+A rigorous head-to-head performance evaluation was conducted using `valkey-benchmark` comparing [`resp-cpp`](file:///home/rustam/Projects/resp-cpp) against enterprise **Valkey 9.1.2** (the high-performance Redis fork). Tests measured sustained throughput (QPS) and exact tail latencies across 60s, 120s, and 500s runs under strict Linux CPU core affinity isolation.
 
-Output:
-```text
-Disconnected: True
-```
+### 🖥️ Hardware Profile & Test Setup
 
-The server immediately drops the abusive connection and releases its file descriptor.
+- **Processor:** Intel® Core™ i5-4430 @ 3.00GHz (Haswell, 4 physical cores, 4 threads, 6 MB L3 cache)
+- **RAM:** 16 GB DDR3 (15 GiB usable, ~12 GiB free)
+- **Operating System:** Linux 7.2.5-3-omarchy x86_64
+- **Affinity & Isolation:**
+  - Server process (`valkey-server` or `resp-server`): Dedicated to **CPU Core 0** (`taskset -c 0`)
+  - Benchmark client (`valkey-benchmark`): Dedicated to **CPU Cores 1–3** (`taskset -c 1-3`)
+- **Transport & Workload:** Local loopback interface (`127.0.0.1`), unpipelined synchronous request-response (`-P 1`), 50 concurrent client connections (`-c 50`)
+- **Server Configurations:**
+  - **Valkey 9.1.2:** `--save "" --appendonly no --protected-mode no` (pure in-memory configuration without disk I/O)
+  - **RESP-CPP:** Production build compiled with `g++ -std=c++17 -Wall -Wextra -O3 -march=native -DNDEBUG`
 
 ---
 
-## 📊 Benchmarks (Over 230,000+ QPS)
+### ⏱️ High-Precision Tail Latency Distribution (p50, p90, p99, p99.9, p99.99)
 
-A custom asynchronous benchmark suite (`benchmark.py`) is included to evaluate throughput and tail latency under heavy connection load and pipelining.
+Measured at high precision (`--precision 3`) with 50 parallel clients:
 
-### 1. Pipelined High-Throughput Test (50,000 requests, pipeline depth 16)
+| Command | Metric | Valkey 9.1.2 | RESP-CPP | Differential |
+| :--- | :--- | :--- | :--- | :--- |
+| **`PING_INLINE`** | **Throughput** | 115,051.60 req/s | **115,831.10 req/s** | **+0.68% (RESP-CPP faster)** |
+| | **p50 (Median)** | 0.215 ms | **0.215 ms** | Identical (0.000 ms) |
+| | **p75** | 0.231 ms | **0.239 ms** | +0.008 ms |
+| | **p90** | 0.247 ms | **0.255 ms** | +0.008 ms |
+| | **p95** | 0.271 ms | **0.279 ms** | +0.008 ms |
+| | **p99** | 0.319 ms | **0.327 ms** | +0.008 ms |
+| | **p99.9** | 0.479 ms | **0.767 ms** | +0.288 ms |
+| | **p99.99** | 0.911 ms | **1.927 ms** | +1.016 ms |
+| | **Max** | 1.895 ms | **1.983 ms** | +0.088 ms |
+| **`PING_MBULK`** | **Throughput** | 113,622.80 req/s | **115,592.60 req/s** | **+1.73% (RESP-CPP faster)** |
+| | **p50 (Median)** | 0.215 ms | **0.215 ms** | Identical (0.000 ms) |
+| | **p75** | 0.231 ms | **0.231 ms** | Identical (0.000 ms) |
+| | **p90** | 0.247 ms | **0.247 ms** | Identical (0.000 ms) |
+| | **p95** | 0.279 ms | **0.271 ms** | **-0.008 ms (RESP-CPP faster)** |
+| | **p99** | 0.335 ms | **0.311 ms** | **-0.024 ms (RESP-CPP faster)** |
+| | **p99.9** | 1.855 ms | **0.767 ms** | **-1.088 ms (RESP-CPP faster)** |
+| | **p99.99** | 3.471 ms | **2.487 ms** | **-0.984 ms (RESP-CPP faster)** |
+| | **Max** | 5.615 ms | **4.151 ms** | **-1.464 ms (RESP-CPP faster)** |
+| **`SET`** | **Throughput** | 113,209.20 req/s | **117,190.70 req/s** | **+3.52% (RESP-CPP faster)** |
+| | **p50 (Median)** | 0.223 ms | **0.215 ms** | **-0.008 ms (RESP-CPP faster)** |
+| | **p75** | 0.239 ms | **0.239 ms** | Identical (0.000 ms) |
+| | **p90** | 0.255 ms | **0.255 ms** | Identical (0.000 ms) |
+| | **p95** | 0.279 ms | **0.279 ms** | Identical (0.000 ms) |
+| | **p99** | 0.335 ms | **0.327 ms** | **-0.008 ms (RESP-CPP faster)** |
+| | **p99.9** | 1.895 ms | **1.407 ms** | **-0.488 ms (RESP-CPP faster)** |
+| | **p99.99** | 2.503 ms | **2.487 ms** | **-0.016 ms (RESP-CPP faster)** |
+| | **Max** | 4.095 ms | **2.727 ms** | **-1.368 ms (RESP-CPP faster)** |
+| **`GET`** | **Throughput** | 116,295.30 req/s | **95,191.04 req/s** | -18.1% |
+| | **p50 (Median)** | 0.223 ms | **0.223 ms** | Identical (0.000 ms) |
+| | **p75** | 0.231 ms | **0.255 ms** | +0.024 ms |
+| | **p90** | 0.247 ms | **0.303 ms** | +0.056 ms |
+| | **p95** | 0.271 ms | **0.551 ms** | +0.280 ms |
+| | **p99** | 0.303 ms | **1.903 ms** | +1.600 ms |
+| | **p99.9** | 0.479 ms | **3.703 ms** | +3.224 ms |
+| | **p99.99** | 2.343 ms | **5.743 ms** | +3.400 ms |
+| | **Max** | 3.175 ms | **6.799 ms** | +3.624 ms |
 
-```bash
-python3 benchmark.py --clients 100 --requests 50000 --pipeline 16
-```
+---
 
-```text
-============================================================
-  RESP-CPP Engine Benchmark Suite
-============================================================
-Target:               127.0.0.1:6380
-Concurrent Clients:   100
-Pipeline Depth:       16
-Total Requests:       50,000 (Alternating SET & GET)
-============================================================
-[SUCCESS] Completed 50,000 requests across 100 clients in 0.22 seconds.
-[RESULT]  Throughput:  230,903 QPS (Requests/sec)
-[LATENCY] Avg: 0.40 ms | p50: 0.40 ms | p95: 0.50 ms | p99: 0.58 ms
-============================================================
-```
+### 📈 Sustained Throughput Across Test Durations
 
-### 2. Massive Concurrency Stress Test (1,000 Concurrent Clients, 100,000 requests)
+#### 1. Run 1: 60 Seconds (Industry Standard Microbenchmark)
 
-```bash
-python3 benchmark.py --clients 1000 --requests 100000 --pipeline 16
-```
+| Command | Valkey 9.1.2 | RESP-CPP | Difference | p50 Latency (Valkey / RESP-CPP) |
+| :--- | :--- | :--- | :--- | :--- |
+| **`PING_INLINE`** | 115,408 req/s | **114,251 req/s** | -1.0% | 0.215 ms / 0.223 ms |
+| **`PING_MBULK`** | 115,589 req/s | **114,380 req/s** | -1.0% | 0.215 ms / 0.223 ms |
+| **`SET`** | 116,163 req/s | **115,258 req/s** | -0.8% | 0.223 ms / 0.223 ms |
+| **`GET`** | 116,483 req/s | **116,059 req/s** | -0.4% | 0.215 ms / 0.223 ms |
 
-```text
-============================================================
-[SUCCESS] Completed 100,000 requests across 1,000 clients in 0.60 seconds.
-[RESULT]  Throughput:  165,386 QPS (Requests/sec)
-[LATENCY] Avg: 4.37 ms | p50: 4.08 ms | p95: 4.22 ms | p99: 15.22 ms
-============================================================
-```
+#### 2. Run 2: 120 Seconds (Hybrid Soak Benchmark)
+
+| Command | Valkey 9.1.2 | RESP-CPP | Difference | p50 Latency (Valkey / RESP-CPP) |
+| :--- | :--- | :--- | :--- | :--- |
+| **`PING_INLINE`** | 115,812 req/s | **114,388 req/s** | -1.2% | 0.215 ms / 0.223 ms |
+| **`PING_MBULK`** | 116,121 req/s | **114,115 req/s** | -1.7% | 0.215 ms / 0.223 ms |
+| **`SET`** | 116,120 req/s | **114,356 req/s** | -1.5% | 0.223 ms / 0.223 ms |
+| **`GET`** | 116,360 req/s | **115,088 req/s** | -1.1% | 0.215 ms / 0.223 ms |
+
+#### 3. Run 3: 500 Seconds (Sustained Endurance Benchmark)
+
+| Command | Valkey 9.1.2 | RESP-CPP | Difference | p50 Latency (Valkey / RESP-CPP) |
+| :--- | :--- | :--- | :--- | :--- |
+| **`PING_INLINE`** | 115,648 req/s | **113,118 req/s** | -2.2% | 0.215 ms / 0.223 ms |
+| **`PING_MBULK`** | 115,845 req/s | **112,992 req/s** | -2.5% | 0.215 ms / 0.223 ms |
+| **`SET`** | 116,218 req/s | **113,094 req/s** | -2.7% | 0.223 ms / 0.223 ms |
+| **`GET`** | 116,024 req/s | **113,122 req/s** | -2.5% | 0.215 ms / 0.223 ms |
+
+> All raw progression logs, high-precision latency percentiles, and test runner artifacts are preserved in the [`logs/`](file:///home/rustam/Projects/resp-cpp/logs) directory.
 
 ---
 
 ## ⚙️ Technical Design Decisions
 
+- **Dual-Mode Request Framing:** Inspects the first byte of the client buffer. If `*`, it executes binary-safe RESP Multibulk Array parsing with incomplete payload buffering (`NEED_MORE_DATA`). If not `*`, it falls back to newline-framed inline commands processed by a quote-aware tokenizer.
 - **`std::unordered_map` over `std::map`:** Used for both connection state lookup (`int fd -> ClientState`) and the in-memory database (`std::string -> std::string`) to guarantee amortized $O(1)$ constant-time operations rather than $O(\log N)$ red-black tree traversals.
-- **`std::string_view` for Zero-Copy Tokenization:** Incoming client request buffers are parsed without allocating temporary strings on the heap. Ownership is transferred to `std::string` only when storing entries in the hash map.
-- **Single-Threaded Epoll Reactor:** Eliminates the heavy memory footprint of thread-per-connection designs (where each thread incurs 2MB–8MB stack allocation) and avoids locking overhead, mutex contention, and kernel context-switching latency.
-- **`TCP_NODELAY` (Disabling Nagle's Algorithm):** Nagle's algorithm aggregates small TCP packets until an ACK is received. In a request-response protocol, this frequently triggers a 40ms delayed-ACK penalty. Setting `TCP_NODELAY` ensures responses are transmitted immediately.
-- **Dynamic Write Buffering (`EPOLLOUT` Backpressure):** Sockets are never blocked on large writes. Responses are appended to `ClientState::write_buf`, written non-blockingly, and dynamically watched with `EPOLLOUT` only when partially written, preventing busy polling.
+- **`EMFILE` Level-Triggered Spin Cure:** When a process reaches its file descriptor limit, `accept()` fails with `EMFILE`, leaving the pending socket in the kernel listen backlog and causing level-triggered epoll to fire at 100% CPU. Opening a reserved spare descriptor (`/dev/null`) allows closing it temporarily, draining and closing the excess socket, and reopening the reserve descriptor.
+- **`TCP_NODELAY` (Disabling Nagle's Algorithm):** Nagle's algorithm aggregates small TCP packets until an ACK is received. In request-response protocols, this triggers a 40ms delayed-ACK penalty. Setting `TCP_NODELAY` ensures responses transmit immediately.
+- **Dynamic Write Buffering (`EPOLLOUT` Backpressure):** Sockets are never blocked on large writes. Responses are appended to `ClientState::write_buf`, written non-blockingly, and dynamically watched with `EPOLLOUT` only when partially written, preventing busy polling. A 10 MB ceiling prevents unbounded memory growth.
 - **AddressSanitizer (ASan) & UBSan Verification:** The entire codebase compiles cleanly under `-fsanitize=address,undefined` to guarantee no use-after-free, buffer overflows, or memory leaks occur during concurrent connections.
 
 ---

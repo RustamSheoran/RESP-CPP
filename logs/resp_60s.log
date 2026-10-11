@@ -1,0 +1,108 @@
+# ========================================================================
+# Benchmark Run: RESP-CPP (60s Sustained Execution)
+# Target Port: 6380
+# Concurrency: 50 clients | Pipeline: 1 | Sub-tests: PING_INLINE, PING_MBULK, SET, GET
+# CPU: Intel Core i5-4430 @ 3.00GHz (Core 0 Server, Cores 1-3 Benchmark)
+# OS: Linux 7.2.5-3-omarchy x86_64 | Memory: 16 GB
+# ========================================================================
+
+PING_INLINE: rps=0.0 (overall: 0.0) avg_msec=-nan (overall: -nan) 0.0 seconds
+PING_INLINE: rps=113952.0 (overall: 113498.0) avg_msec=0.224 (overall: 0.224) 0.3 seconds
+PING_INLINE: rps=112155.4 (overall: 112826.7) avg_msec=0.228 (overall: 0.226) 0.5 seconds
+PING_INLINE: rps=114988.0 (overall: 113545.2) avg_msec=0.221 (overall: 0.225) 0.8 seconds
+PING_INLINE: rps=110701.2 (overall: 113926.1) avg_msec=0.233 (overall: 0.224) 5.0 seconds
+PING_INLINE: rps=109424.0 (overall: 113712.1) avg_msec=0.239 (overall: 0.224) 5.3 seconds
+PING_INLINE: rps=109880.5 (overall: 113985.6) avg_msec=0.233 (overall: 0.224) 10.0 seconds
+PING_INLINE: rps=113068.0 (overall: 113963.3) avg_msec=0.225 (overall: 0.224) 10.3 seconds
+PING_INLINE: rps=114920.0 (overall: 113406.4) avg_msec=0.221 (overall: 0.225) 15.0 seconds
+PING_INLINE: rps=116320.0 (overall: 113454.0) avg_msec=0.220 (overall: 0.225) 15.3 seconds
+PING_INLINE: rps=113932.0 (overall: 113575.7) avg_msec=0.224 (overall: 0.225) 20.0 seconds
+PING_INLINE: rps=113048.0 (overall: 113569.2) avg_msec=0.231 (overall: 0.225) 20.3 seconds
+PING_INLINE: rps=108019.9 (overall: 113831.7) avg_msec=0.240 (overall: 0.224) 25.0 seconds
+PING_INLINE: rps=114080.0 (overall: 113834.2) avg_msec=0.223 (overall: 0.224) 25.3 seconds
+PING_INLINE: rps=110063.8 (overall: 113973.0) avg_msec=0.234 (overall: 0.224) 30.0 seconds
+PING_INLINE: rps=111356.0 (overall: 113951.4) avg_msec=0.229 (overall: 0.224) 30.3 seconds
+PING_INLINE: rps=114676.0 (overall: 113987.0) avg_msec=0.222 (overall: 0.224) 35.1 seconds
+PING_INLINE: rps=114872.0 (overall: 113993.3) avg_msec=0.222 (overall: 0.224) 35.3 seconds
+PING_INLINE: rps=113039.8 (overall: 114060.6) avg_msec=0.224 (overall: 0.224) 40.1 seconds
+PING_INLINE: rps=114864.0 (overall: 114065.6) avg_msec=0.222 (overall: 0.224) 40.3 seconds
+PING_INLINE: rps=113561.8 (overall: 113965.2) avg_msec=0.226 (overall: 0.224) 45.1 seconds
+PING_INLINE: rps=114696.0 (overall: 113969.2) avg_msec=0.222 (overall: 0.224) 45.3 seconds
+PING_INLINE: rps=110840.0 (overall: 114082.6) avg_msec=0.233 (overall: 0.224) 50.1 seconds
+PING_INLINE: rps=113709.2 (overall: 114080.7) avg_msec=0.223 (overall: 0.224) 50.3 seconds
+PING_INLINE: rps=114116.0 (overall: 114218.8) avg_msec=0.226 (overall: 0.223) 55.1 seconds
+PING_INLINE: rps=119884.0 (overall: 114244.4) avg_msec=0.211 (overall: 0.223) 55.3 seconds
+
+>>> SUB-TEST SUMMARY: PING_INLINE: 114250.87 requests per second, p50=0.223 msec
+
+PING_MBULK: rps=43820.7 (overall: 119554.3) avg_msec=0.210 (overall: 0.210) 0.1 seconds
+PING_MBULK: rps=114928.0 (overall: 116172.5) avg_msec=0.223 (overall: 0.219) 0.3 seconds
+PING_MBULK: rps=113099.6 (overall: 114871.8) avg_msec=0.224 (overall: 0.221) 0.6 seconds
+PING_MBULK: rps=112848.0 (overall: 114271.6) avg_msec=0.225 (overall: 0.223) 0.8 seconds
+PING_MBULK: rps=118800.0 (overall: 115610.4) avg_msec=0.214 (overall: 0.220) 5.1 seconds
+PING_MBULK: rps=118292.0 (overall: 115694.0) avg_msec=0.215 (overall: 0.220) 10.1 seconds
+PING_MBULK: rps=113266.9 (overall: 115144.0) avg_msec=0.224 (overall: 0.221) 15.1 seconds
+PING_MBULK: rps=112231.1 (overall: 115219.1) avg_msec=0.229 (overall: 0.221) 20.1 seconds
+PING_MBULK: rps=113812.8 (overall: 115078.6) avg_msec=0.225 (overall: 0.221) 25.1 seconds
+PING_MBULK: rps=107681.3 (overall: 114916.3) avg_msec=0.241 (overall: 0.222) 30.1 seconds
+PING_MBULK: rps=111292.0 (overall: 114716.5) avg_msec=0.232 (overall: 0.222) 35.1 seconds
+PING_MBULK: rps=111876.5 (overall: 114781.1) avg_msec=0.227 (overall: 0.222) 40.2 seconds
+PING_MBULK: rps=114219.1 (overall: 114683.5) avg_msec=0.223 (overall: 0.222) 45.2 seconds
+PING_MBULK: rps=111705.2 (overall: 114533.9) avg_msec=0.227 (overall: 0.223) 50.2 seconds
+PING_MBULK: rps=113426.3 (overall: 114479.5) avg_msec=0.224 (overall: 0.223) 55.2 seconds
+
+>>> SUB-TEST SUMMARY: PING_MBULK: 114380.20 requests per second, p50=0.223 msec
+
+SET: rps=88605.6 (overall: 118930.5) avg_msec=0.213 (overall: 0.213) 0.2 seconds
+SET: rps=113600.0 (overall: 115881.0) avg_msec=0.225 (overall: 0.220) 0.4 seconds
+SET: rps=117372.0 (overall: 116423.6) avg_msec=0.217 (overall: 0.219) 0.7 seconds
+SET: rps=112378.5 (overall: 115341.1) avg_msec=0.226 (overall: 0.221) 0.9 seconds
+SET: rps=116418.3 (overall: 115135.3) avg_msec=0.218 (overall: 0.221) 5.2 seconds
+SET: rps=117396.0 (overall: 115114.1) avg_msec=0.216 (overall: 0.222) 10.0 seconds
+SET: rps=114292.0 (overall: 115094.0) avg_msec=0.223 (overall: 0.222) 10.2 seconds
+SET: rps=113340.0 (overall: 115319.9) avg_msec=0.226 (overall: 0.221) 15.0 seconds
+SET: rps=116366.5 (overall: 115337.2) avg_msec=0.219 (overall: 0.221) 15.2 seconds
+SET: rps=114450.2 (overall: 115495.6) avg_msec=0.223 (overall: 0.221) 20.0 seconds
+SET: rps=111908.0 (overall: 115451.2) avg_msec=0.228 (overall: 0.221) 20.2 seconds
+SET: rps=116088.0 (overall: 115605.7) avg_msec=0.220 (overall: 0.221) 25.0 seconds
+SET: rps=113864.5 (overall: 115588.3) avg_msec=0.224 (overall: 0.221) 25.2 seconds
+SET: rps=113564.0 (overall: 115525.7) avg_msec=0.225 (overall: 0.221) 30.0 seconds
+SET: rps=113159.4 (overall: 115506.0) avg_msec=0.225 (overall: 0.221) 30.2 seconds
+SET: rps=119620.0 (overall: 115552.1) avg_msec=0.213 (overall: 0.221) 35.0 seconds
+SET: rps=119384.0 (overall: 115579.3) avg_msec=0.213 (overall: 0.221) 35.2 seconds
+SET: rps=111008.0 (overall: 115595.7) avg_msec=0.231 (overall: 0.221) 40.0 seconds
+SET: rps=113828.0 (overall: 115584.7) avg_msec=0.225 (overall: 0.221) 40.2 seconds
+SET: rps=112168.0 (overall: 115199.0) avg_msec=0.229 (overall: 0.222) 45.0 seconds
+SET: rps=112067.7 (overall: 115181.6) avg_msec=0.227 (overall: 0.222) 45.3 seconds
+SET: rps=117474.1 (overall: 115210.5) avg_msec=0.215 (overall: 0.222) 50.0 seconds
+SET: rps=119052.0 (overall: 115229.6) avg_msec=0.215 (overall: 0.222) 50.3 seconds
+SET: rps=115820.0 (overall: 115239.4) avg_msec=0.221 (overall: 0.222) 55.0 seconds
+SET: rps=113016.0 (overall: 115229.3) avg_msec=0.227 (overall: 0.222) 55.3 seconds
+
+>>> SUB-TEST SUMMARY: SET: 115257.91 requests per second, p50=0.223 msec
+
+GET: rps=14800.8 (overall: 119838.7) avg_msec=0.210 (overall: 0.210) 0.0 seconds
+GET: rps=117372.0 (overall: 117644.1) avg_msec=0.217 (overall: 0.216) 0.3 seconds
+GET: rps=114183.3 (overall: 116011.3) avg_msec=0.223 (overall: 0.219) 0.5 seconds
+GET: rps=116520.0 (overall: 116173.9) avg_msec=0.220 (overall: 0.220) 0.8 seconds
+GET: rps=113408.0 (overall: 116666.1) avg_msec=0.225 (overall: 0.218) 5.0 seconds
+GET: rps=116147.4 (overall: 116641.5) avg_msec=0.219 (overall: 0.218) 5.3 seconds
+GET: rps=113212.0 (overall: 116639.5) avg_msec=0.228 (overall: 0.219) 10.0 seconds
+GET: rps=117256.0 (overall: 116654.4) avg_msec=0.217 (overall: 0.219) 10.3 seconds
+GET: rps=117111.6 (overall: 116274.1) avg_msec=0.217 (overall: 0.219) 15.1 seconds
+GET: rps=119124.0 (overall: 116320.7) avg_msec=0.213 (overall: 0.219) 15.3 seconds
+GET: rps=116187.3 (overall: 116170.9) avg_msec=0.219 (overall: 0.220) 20.1 seconds
+GET: rps=120196.0 (overall: 116220.5) avg_msec=0.211 (overall: 0.220) 20.3 seconds
+GET: rps=116848.0 (overall: 116260.7) avg_msec=0.219 (overall: 0.220) 25.1 seconds
+GET: rps=118270.9 (overall: 116280.6) avg_msec=0.214 (overall: 0.219) 25.3 seconds
+GET: rps=118680.0 (overall: 116116.1) avg_msec=0.215 (overall: 0.220) 30.1 seconds
+GET: rps=115000.0 (overall: 116106.9) avg_msec=0.221 (overall: 0.220) 30.3 seconds
+GET: rps=113400.0 (overall: 115998.9) avg_msec=0.225 (overall: 0.220) 35.1 seconds
+GET: rps=114292.0 (overall: 115986.8) avg_msec=0.223 (overall: 0.220) 35.3 seconds
+GET: rps=118920.3 (overall: 116032.9) avg_msec=0.213 (overall: 0.220) 40.1 seconds
+GET: rps=114296.0 (overall: 116022.1) avg_msec=0.224 (overall: 0.220) 40.3 seconds
+GET: rps=119996.0 (overall: 116087.0) avg_msec=0.212 (overall: 0.220) 45.1 seconds
+GET: rps=113508.0 (overall: 116067.3) avg_msec=0.224 (overall: 0.220) 50.1 seconds
+GET: rps=120584.0 (overall: 116032.1) avg_msec=0.211 (overall: 0.220) 55.1 seconds
+
+>>> SUB-TEST SUMMARY: GET: 116059.30 requests per second, p50=0.223 msec

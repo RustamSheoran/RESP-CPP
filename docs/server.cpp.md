@@ -1,462 +1,461 @@
 # Documentation: `src/server.cpp`
 
-The [`src/server.cpp`](file:///home/rustam/Projects/resp-cpp/src/server.cpp) file implements the networking engine of the RESP server: socket configuration, the single-threaded Linux `epoll` reactor loop, connection acceptance, non-blocking reading, delimiter framing, Slowloris DoS protection, dynamic write backpressure (`EPOLLOUT`), and client connection teardown.
+The [`src/server.cpp`](file:///home/rustam/Projects/resp-cpp/src/server.cpp) file implements the networking reactor core, connection accept loop, 16 KB non-blocking I/O buffers, pre-allocated client streams, batch cursor parsing, `EMFILE` spin protection, idle connection sweeps, backpressure limits, and graceful `QUIT` teardown.
 
 ---
 
-## Complete Source Code
+### Line 1: `#include "server.h"`
+Imports the `Server` class declarations and configuration constants.
 
-```cpp
-1: #include "server.h"
-2: #include "utils.h"
-3: #include "protocol.h"
-4: #include <cstdio>
-5: #include <cstring>
-6: #include <netinet/in.h>
-7: #include <netinet/tcp.h>
-8: #include <stdexcept>
-9: #include <sys/epoll.h>
-10: #include <sys/socket.h>
-11: #include <unistd.h>
-12: 
-13: Server::Server(int port) : port(port), server_fd(-1), epfd(-1) {
-14:   server_fd = socket(AF_INET, SOCK_STREAM, 0);
-15:   if (server_fd < 0) {
-16:     throw std::runtime_error("Failed to create socket");
-17:   }
-18: 
-19:   int opt = 1;
-20:   setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-21: 
-22:   sockaddr_in addr{};
-23:   addr.sin_family = AF_INET;
-24:   addr.sin_addr.s_addr = INADDR_ANY;
-25:   addr.sin_port = htons(port);
-26: 
-27:   if (bind(server_fd, (sockaddr *)&addr, sizeof(addr)) < 0) {
-28:     throw std::runtime_error("Failed to bind");
-29:   }
-30: 
-31:   if (listen(server_fd, 128) < 0) {
-32:     throw std::runtime_error("Failed to listen");
-33:   }
-34: 
-35:   set_nonblocking(server_fd);
-36: 
-37:   epfd = epoll_create1(0);
-38:   if (epfd < 0) {
-39:     throw std::runtime_error("Failed to create epoll");
-40:   }
-41: 
-42:   epoll_event ev{};
-43:   ev.events = EPOLLIN;
-44:   ev.data.fd = server_fd;
-45:   epoll_ctl(epfd, EPOLL_CTL_ADD, server_fd, &ev);
-46: }
-47: 
-48: Server::~Server() {
-49:   if (server_fd >= 0)
-50:     close(server_fd);
-51:   if (epfd >= 0)
-52:     close(epfd);
-53: }
-54: 
-55: void Server::run() {
-56:   epoll_event events[MAX_EVENTS];
-57:   printf("listening on port %d\n", port);
-58: 
-59:   while (true) {
-60:     int n = epoll_wait(epfd, events, MAX_EVENTS, -1);
-61:     for (int i = 0; i < n; i++) {
-62:       int fd = events[i].data.fd;
-63:       if (fd == server_fd) {
-64:         accept_clients();
-65:       } else {
-66:         if (events[i].events & EPOLLIN) {
-67:           handle_read(fd);
-68:         }
-69:         if (events[i].events & EPOLLOUT) {
-70:           handle_write(fd);
-71:         }
-72:       }
-73:     }
-74:   }
-75: }
-76: 
-77: void Server::accept_clients() {
-78:   while (true) {
-79:     int client_fd = accept(server_fd, nullptr, nullptr);
-80:     if (client_fd < 0)
-81:       break;
-82:     clients[client_fd] = ClientState{client_fd, "", ""};
-83:     set_nonblocking(client_fd);
-84:     int nodelay = 1;
-85:     setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
-86: 
-87:     epoll_event cev{};
-88:     cev.events = EPOLLIN;
-89:     cev.data.fd = client_fd;
-90:     epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &cev);
-91: #ifdef VERBOSE
-92:     printf("client %d connected\n", client_fd);
-93: #endif
-94:   }
-95: }
-96: 
-97: 
-98: void Server::handle_read(int fd) {
-99:   char buf[4096];
-100:   ssize_t count = read(fd, buf, sizeof(buf));
-101: 
-102:   if (count <= 0) {
-103:     if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-104:       return;
-105:     }
-106:     close_client(fd);
-107:     return;
-108:   }
-109: 
-110:   auto &state = clients[fd];
-111:   state.read_buf.append(buf, count);
-112: 
-113:   constexpr size_t MAX_QUERY_LEN = 300;
-114: 
-115:   size_t pos;
-116:   while ((pos = state.read_buf.find('\n')) != std::string::npos) {
-117:     if (pos > MAX_QUERY_LEN) {
-118:       printf("Client %d query exceeded MAX_QUERY_LEN (%zu bytes). Dropping connection.\n", fd, MAX_QUERY_LEN);
-119:       close_client(fd);
-120:       return;
-121:     }
-122: 
-123:     std::string message = state.read_buf.substr(0, pos);
-124:     state.read_buf.erase(0, pos + 1);
-125: 
-126:     handle_message(fd, message);
-127:   }
-128: 
-129:   if (state.read_buf.size() > MAX_QUERY_LEN) {
-130:     printf("Client %d buffer exceeded MAX_QUERY_LEN (%zu bytes). Dropping connection.\n", fd, MAX_QUERY_LEN);
-131:     close_client(fd);
-132:     return;
-133:   }
-134: 
-135:   if (!state.write_buf.empty()) {
-136:     ssize_t written = write(fd, state.write_buf.data(), state.write_buf.size());
-137:     if (written > 0) {
-138:       state.write_buf.erase(0, written);
-139:     } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-140:       close_client(fd);
-141:       return;
-142:     }
-143: 
-144:     if (!state.write_buf.empty()) {
-145:       epoll_event cev{};
-146:       cev.events = EPOLLIN | EPOLLOUT;
-147:       cev.data.fd = fd;
-148:       epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &cev);
-149:     }
-150:   }
-151: }
-152: 
-153: void Server::handle_message(int fd, const std::string &message) {
-154:   std::string_view msg_view = message;
-155: 
-156:   while (!msg_view.empty() && (msg_view.back() == '\r' || msg_view.back() == ' ')) {
-157:     msg_view.remove_suffix(1);
-158:   }
-159:   while (!msg_view.empty() && (msg_view.front() == ' ')) {
-160:     msg_view.remove_prefix(1);
-161:   }
-162: 
-163:   if (msg_view.empty()) {
-164:     return;
-165:   }
-166: 
-167:   std::string response = Protocol::execute_command(msg_view);
-168:   if (!response.empty()) {
-169:     auto &state = clients[fd];
-170:     state.write_buf += response;
-171:   }
-172: }
-173: 
-174: void Server::handle_write(int fd) {
-175:   if (clients.find(fd) == clients.end())
-176:     return;
-177:   auto &state = clients[fd];
-178: 
-179:   ssize_t written = write(fd, state.write_buf.data(), state.write_buf.size());
-180:   if (written > 0) {
-181:     state.write_buf.erase(0, written);
-182:   } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-183:     close_client(fd);
-184:     return;
-185:   }
-186: 
-187:   if (state.write_buf.empty()) {
-188:     epoll_event cev{};
-189:     cev.events = EPOLLIN;
-190:     cev.data.fd = fd;
-191:     epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &cev);
-192:   }
-193: }
-194: 
-195: void Server::close_client(int fd) {
-196:   epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
-197:   close(fd);
-198:   clients.erase(fd);
-199: #ifdef VERBOSE
-200:   printf("client %d disconnected\n", fd);
-201: #endif
-202: }
-```
+### Line 2: `#include "utils.h"`
+Imports `set_nonblocking()` socket configuration utility.
 
----
+### Line 3: `#include "protocol.h"`
+Imports `Protocol::parse_and_execute()` protocol parser interface.
 
-## Line-by-Line Breakdown & Explanation
+### Line 4: `#include <cstdio>`
+Imports C standard I/O library for console status output (`printf`).
 
-### Header Inclusions (Lines 1–11)
-- **Line 1: `#include "server.h"`**  
-  Class interface containing declarations of `Server`, methods, and member attributes.
-- **Line 2: `#include "utils.h"`**  
-  Declares the `set_nonblocking(int fd)` socket utility.
-- **Line 3: `#include "protocol.h"`**  
-  Declares `Protocol::execute_command()`.
-- **Line 4: `#include <cstdio>`**  
-  Provides `printf` for console status messages.
-- **Line 5: `#include <cstring>`**  
-  Provides memory and string functions (e.g. `memset`).
-- **Line 6: `#include <netinet/in.h>`**  
-  Provides Internet address structures (`sockaddr_in`, `INADDR_ANY`) and byte-order conversions (`htons`).
-- **Line 7: `#include <netinet/tcp.h>`**  
-  Provides TCP socket options, specifically `TCP_NODELAY`.
-- **Line 8: `#include <stdexcept>`**  
-  Provides standard exception classes such as `std::runtime_error`.
-- **Line 9: `#include <sys/epoll.h>`**  
-  Provides Linux event polling system calls and structures (`epoll_create1`, `epoll_ctl`, `epoll_wait`, `struct epoll_event`, `EPOLLIN`, `EPOLLOUT`).
-- **Line 10: `#include <sys/socket.h>`**  
-  Provides standard POSIX networking calls (`socket`, `bind`, `listen`, `accept`, `setsockopt`, `SOL_SOCKET`, `SO_REUSEADDR`).
-- **Line 11: `#include <unistd.h>`**  
-  Provides standard POSIX system calls (`read`, `write`, `close`).
+### Line 5: `#include <cstring>`
+Imports memory management functions such as `memset`.
 
----
+### Line 6: `#include <vector>`
+Imports `std::vector` for collecting file descriptors during idle sweeps.
 
-### Constructor: `Server::Server(int port)` (Lines 13–46)
-- **Line 13: `Server::Server(int port) : port(port), server_fd(-1), epfd(-1) {`**  
-  Initializes member variables: stores target port and defaults file descriptors to `-1` (invalid state).
-- **Line 14: `  server_fd = socket(AF_INET, SOCK_STREAM, 0);`**  
-  Creates an IPv4 (`AF_INET`) TCP byte-stream socket (`SOCK_STREAM`).
-- **Line 15–17:**  
-  Checks if `server_fd < 0`; if socket creation fails, throws `std::runtime_error`.
-- **Line 19–20:**  
-  ```cpp
-  int opt = 1;
-  setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-  ```
-  Enables `SO_REUSEADDR` to allow immediate rebinding to port 6380 even if previous sockets remain in the kernel `TIME_WAIT` state.
-- **Line 22–25:**  
-  ```cpp
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = INADDR_ANY;
-  addr.sin_port = htons(port);
-  ```
-  Zero-initializes `sockaddr_in` struct, specifies IPv4, binds to all local network interfaces (`INADDR_ANY`), and converts the port number to network byte order (big-endian) using `htons()`.
-- **Line 27–29:**  
-  Binds `server_fd` to the address. If `bind()` fails (e.g. port already occupied), throws `std::runtime_error`.
-- **Line 31–33:**  
-  Marks the socket as passive with a connection backlog queue of 128. If `listen()` fails, throws `std::runtime_error`.
-- **Line 35: `  set_nonblocking(server_fd);`**  
-  Sets the listening socket to `O_NONBLOCK` so `accept()` loops never hang.
-- **Line 37–40:**  
-  Calls `epoll_create1(0)` to initialize a new epoll kernel instance. Throws `std::runtime_error` if `epfd < 0`.
-- **Line 42–45:**  
-  ```cpp
-  epoll_event ev{};
-  ev.events = EPOLLIN;
-  ev.data.fd = server_fd;
-  epoll_ctl(epfd, EPOLL_CTL_ADD, server_fd, &ev);
-  ```
-  Zero-initializes `epoll_event`, registers `server_fd` for read events (`EPOLLIN` indicates incoming client connections are waiting in the backlog), and adds it to the epoll watch list using `EPOLL_CTL_ADD`.
-- **Line 46: `}`**  
-  Ends constructor.
+### Line 7: `#include <chrono>`
+Imports `std::chrono` monotonic clock utilities for activity timestamping.
 
----
+### Line 8: `#include <fcntl.h>`
+Imports POSIX file control declarations for `open()` and `O_RDONLY`.
 
-### Destructor: `Server::~Server()` (Lines 48–53)
-- **Line 48: `Server::~Server() {`**  
-  Class destructor ensuring proper RAII resource teardown.
-- **Line 49–50: `  if (server_fd >= 0) close(server_fd);`**  
-  Closes master listening socket if it was opened.
-- **Line 51–52: `  if (epfd >= 0) close(epfd);`**  
-  Closes epoll kernel instance descriptor.
-- **Line 53: `}`**  
-  Ends destructor.
+### Line 9: `#include <netinet/in.h>`
+Imports Internet socket address structure `sockaddr_in` and `htons()`.
 
----
+### Line 10: `#include <netinet/tcp.h>`
+Imports TCP options, specifically `TCP_NODELAY`.
 
-### Event Loop: `Server::run()` (Lines 55–75)
-- **Line 55: `void Server::run() {`**  
-  The reactor event loop.
-- **Line 56: `  epoll_event events[MAX_EVENTS];`**  
-  Stack-allocated array of 64 `epoll_event` structs receiving triggered events from the kernel.
-- **Line 57: `  printf("listening on port %d\n", port);`**  
-  Prints startup confirmation message to standard output.
-- **Line 59: `  while (true) {`**  
-  Infinite event polling loop.
-- **Line 60: `    int n = epoll_wait(epfd, events, MAX_EVENTS, -1);`**  
-  Blocks until one or more watched descriptors become ready for I/O (`-1` timeout means wait indefinitely without spinning the CPU). Returns the count of ready events `n`.
-- **Line 61: `    for (int i = 0; i < n; i++) {`**  
-  Iterates over each ready event in the batch.
-- **Line 62: `      int fd = events[i].data.fd;`**  
-  Retrieves the file descriptor associated with the event.
-- **Line 63–64: `      if (fd == server_fd) { accept_clients(); }`**  
-  If the ready descriptor is the listening socket, calls `accept_clients()` to accept incoming connections.
-- **Line 65: `      } else {`**  
-  Otherwise, the event corresponds to an active client socket.
-- **Line 66–68: `        if (events[i].events & EPOLLIN) { handle_read(fd); }`**  
-  If `EPOLLIN` is set, data is available in the socket's receive buffer; invokes `handle_read(fd)`.
-- **Line 69–71: `        if (events[i].events & EPOLLOUT) { handle_write(fd); }`**  
-  If `EPOLLOUT` is set, the socket's transmit buffer is ready to accept outgoing bytes; invokes `handle_write(fd)`.
-- **Line 72–74:**  
-  Closes `for` and `while` loops.
-- **Line 75: `}`**  
-  Ends `run()`.
+### Line 11: `#include <stdexcept>`
+Imports exception classes including `std::runtime_error`.
 
----
+### Line 12: `#include <sys/epoll.h>`
+Imports Linux event polling system calls: `epoll_create1`, `epoll_ctl`, `epoll_wait`, `EPOLLIN`, `EPOLLOUT`.
 
-### Connection Acceptor: `Server::accept_clients()` (Lines 77–95)
-- **Line 77: `void Server::accept_clients() {`**  
-  Handles new client connections.
-- **Line 78: `  while (true) {`**  
-  Loops until all pending connections in the kernel listen queue are accepted.
-- **Line 79: `    int client_fd = accept(server_fd, nullptr, nullptr);`**  
-  Extracts the first connection request on the queue.
-- **Line 80–81: `    if (client_fd < 0) break;`**  
-  Because `server_fd` is non-blocking, when the queue is exhausted, `accept()` returns `-1` with `errno = EAGAIN` or `EWOULDBLOCK`, cleanly exiting the loop.
-- **Line 82: `    clients[client_fd] = ClientState{client_fd, "", ""};`**  
-  Creates a new `ClientState` entry in the `clients` hash map with empty read/write buffers.
-- **Line 83: `    set_nonblocking(client_fd);`**  
-  Sets the client socket to `O_NONBLOCK`.
-- **Line 84–85:**  
-  ```cpp
-  int nodelay = 1;
-  setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
-  ```
-  Disables Nagle's algorithm via `TCP_NODELAY`. This forces small command packets to transmit immediately without waiting for cumulative acknowledgments, eliminating 40ms delayed-ACK latencies.
-- **Line 87–90:**  
-  ```cpp
-  epoll_event cev{};
-  cev.events = EPOLLIN;
-  cev.data.fd = client_fd;
-  epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &cev);
-  ```
-  Registers the client descriptor with the epoll instance for read events (`EPOLLIN`).
-- **Line 91–93:**  
-  Conditionally prints connection confirmation if compiled with `-DVERBOSE`.
-- **Line 94: `  }`**  
-  Ends accept loop.
-- **Line 95: `}`**  
-  Ends `accept_clients()`.
+### Line 13: `#include <sys/socket.h>`
+Imports POSIX socket calls: `socket`, `bind`, `listen`, `accept`, `setsockopt`, `SO_REUSEADDR`.
 
----
+### Line 14: `#include <unistd.h>`
+Imports POSIX system calls: `read`, `write`, `close`.
 
-### Ingress & Protocol Framing: `Server::handle_read(int fd)` (Lines 98–151)
-- **Line 98: `void Server::handle_read(int fd) {`**  
-  Called when data is ready to be read from a client socket.
-- **Line 99: `  char buf[4096];`**  
-  Stack buffer of 4 KB for reading incoming chunks.
-- **Line 100: `  ssize_t count = read(fd, buf, sizeof(buf));`**  
-  Executes non-blocking `read()` from the socket descriptor.
-- **Line 102–108:**  
-  Handles disconnects and errors:
-  - If `count == 0`, client closed connection gracefully (`EOF`); calls `close_client(fd)`.
-  - If `count < 0` with `errno == EAGAIN || errno == EWOULDBLOCK`, no more data is currently available; returns.
-  - If `count < 0` with any other error (e.g. `ECONNRESET`), calls `close_client(fd)` to release resources.
-- **Line 110–111:**  
-  ```cpp
-  auto &state = clients[fd];
-  state.read_buf.append(buf, count);
-  ```
-  Appends newly read bytes to the client's persistent `read_buf`.
-- **Line 113: `  constexpr size_t MAX_QUERY_LEN = 300;`**  
-  Slowloris DoS Defense threshold: Maximum permitted command line size (300 bytes).
-- **Line 115–127:**  
-  Delimiter-based application framing loop:
-  - Line 116: Scans for newline delimiter `\n` in `read_buf`.
-  - Line 117–121: If line length before `\n` exceeds `MAX_QUERY_LEN`, drops connection immediately to protect server memory.
-  - Line 123: Slices out complete command string `message = state.read_buf.substr(0, pos)`.
-  - Line 124: Erases the parsed message and delimiter from `read_buf`.
-  - Line 126: Dispatches message to `handle_message(fd, message)`.
-- **Line 129–133:**  
-  Checks if remaining incomplete buffer exceeds `MAX_QUERY_LEN` without having sent a `\n` (slow drip attack). If exceeded, logs and drops connection via `close_client(fd)`.
-- **Line 135–150:**  
-  Immediate flush attempt of queued response bytes:
-  - Line 136: Calls non-blocking `write(fd, write_buf.data(), write_buf.size())`.
-  - Line 137–138: Erases successfully written bytes from `write_buf`.
-  - Line 139–142: If write fails fatally (not `EAGAIN`/`EWOULDBLOCK`), closes client.
-  - Line 144–149: If bytes still remain unsent in `write_buf`, modifies the descriptor's epoll registration to `EPOLLIN | EPOLLOUT` using `EPOLL_CTL_MOD` so the reactor is notified as soon as the socket is writable again.
-- **Line 151: `}`**  
-  Ends `handle_read()`.
+### Line 15: *(Empty Line)*
+Whitespace separator for visual clarity.
 
----
+### Line 16: `Server::Server(int port) : port(port), server_fd(-1), epfd(-1), idle_fd(-1) {`
+Constructor initializing port and setting descriptor members to `-1`.
 
-### Message Execution: `Server::handle_message(int fd, const std::string &message)` (Lines 153–172)
-- **Line 153: `void Server::handle_message(int fd, const std::string &message) {`**  
-  Dispatches a single complete framed command string.
-- **Line 154: `  std::string_view msg_view = message;`**  
-  Converts message to zero-copy `std::string_view`.
-- **Line 156–161:**  
-  Trims trailing `\r` and whitespace from both ends of the view using `remove_suffix()` and `remove_prefix()`.
-- **Line 163–165: `  if (msg_view.empty()) return;`**  
-  Skips empty commands.
-- **Line 167: `  std::string response = Protocol::execute_command(msg_view);`**  
-  Executes command via zero-copy protocol parser.
-- **Line 168–171:**  
-  If response is not empty, appends response to `clients[fd].write_buf`.
-- **Line 172: `}`**  
-  Ends `handle_message()`.
+### Line 17: `  server_fd = socket(AF_INET, SOCK_STREAM, 0);`
+Creates an IPv4 TCP byte-stream socket.
 
----
+### Line 18: `  if (server_fd < 0) {`
+### Line 19: `    throw std::runtime_error("Failed to create socket");`
+### Line 20: `  }`
+Throws runtime exception if socket creation fails.
 
-### Egress Backpressure Handler: `Server::handle_write(int fd)` (Lines 174–193)
-- **Line 174: `void Server::handle_write(int fd) {`**  
-  Invoked by reactor when a socket with pending writes becomes writable (`EPOLLOUT`).
-- **Line 175–176: `  if (clients.find(fd) == clients.end()) return;`**  
-  Safety guard ensuring descriptor still exists in `clients`.
-- **Line 177: `  auto &state = clients[fd];`**  
-  Gets reference to client state.
-- **Line 179: `  ssize_t written = write(fd, state.write_buf.data(), state.write_buf.size());`**  
-  Performs non-blocking write to socket.
-- **Line 180–182:**  
-  Erases sent bytes from `write_buf`.
-- **Line 182–185:**  
-  Closes client if write returns fatal socket error.
-- **Line 187–192:**  
-  ```cpp
-  if (state.write_buf.empty()) {
-    epoll_event cev{};
-    cev.events = EPOLLIN;
-    cev.data.fd = fd;
-    epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &cev);
-  }
-  ```
-  Once `write_buf` is completely drained, modifies epoll event registration back to `EPOLLIN` only. This is critical to avoid CPU 100% busy-spinning, since a non-full socket transmit buffer will constantly trigger `EPOLLOUT` if left registered.
-- **Line 193: `}`**  
-  Ends `handle_write()`.
+### Line 21: *(Empty Line)*
+Whitespace separator for visual clarity.
 
----
+### Line 22: `  int opt = 1;`
+### Line 23: `  setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));`
+Enables `SO_REUSEADDR` to prevent address-in-use errors during rapid restarts.
 
-### Teardown: `Server::close_client(int fd)` (Lines 195–202)
-- **Line 195: `void Server::close_client(int fd) {`**  
-  Gracefully releases all client resources.
-- **Line 196: `  epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);`**  
-  Deregisters socket descriptor from the epoll watch set.
-- **Line 197: `  close(fd);`**  
-  Closes the underlying OS socket file descriptor.
-- **Line 198: `  clients.erase(fd);`**  
-  Deletes the client's `ClientState` entry and deallocates its buffers from the hash map.
-- **Line 199–201:**  
-  Logs disconnection if `-DVERBOSE` is enabled.
-- **Line 202: `}`**  
-  Ends `close_client()`.
+### Line 24: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 25: `  sockaddr_in addr{};`
+### Line 26: `  addr.sin_family = AF_INET;`
+### Line 27: `  addr.sin_addr.s_addr = INADDR_ANY;`
+### Line 28: `  addr.sin_port = htons(port);`
+Configures socket address to bind to all network interfaces on the specified port.
+
+### Line 29: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 30: `  if (bind(server_fd, (sockaddr *)&addr, sizeof(addr)) < 0) {`
+### Line 31: `    throw std::runtime_error("Failed to bind");`
+### Line 32: `  }`
+Binds the socket to the port, throwing on failure.
+
+### Line 33: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 34: `  if (listen(server_fd, 128) < 0) {`
+### Line 35: `    throw std::runtime_error("Failed to listen");`
+### Line 36: `  }`
+Marks socket as passive with a listen backlog of 128 connections.
+
+### Line 37: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 38: `  set_nonblocking(server_fd);`
+Configures the listening socket for non-blocking I/O (`O_NONBLOCK`).
+
+### Line 39: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 40: `  epfd = epoll_create1(0);`
+### Line 41: `  if (epfd < 0) {`
+### Line 42: `    throw std::runtime_error("Failed to create epoll");`
+### Line 43: `  }`
+Creates the Linux `epoll` instance, throwing on failure.
+
+### Line 44: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 45: `  idle_fd = open("/dev/null", O_RDONLY);`
+Opens reserved spare file descriptor to `/dev/null` for `EMFILE` spin prevention.
+
+### Line 46: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 47: `  epoll_event ev{};`
+### Line 48: `  ev.events = EPOLLIN;`
+### Line 49: `  ev.data.fd = server_fd;`
+### Line 50: `  epoll_ctl(epfd, EPOLL_CTL_ADD, server_fd, &ev);`
+Registers listening socket with epoll for incoming connection events (`EPOLLIN`).
+
+### Line 51: `}`
+Closes `Server` constructor.
+
+### Line 52: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 53: `Server::~Server() {`
+Destructor performing RAII cleanup of system resources.
+
+### Line 54: `  if (server_fd >= 0)`
+### Line 55: `    close(server_fd);`
+Closes master listening socket if open.
+
+### Line 56: `  if (epfd >= 0)`
+### Line 57: `    close(epfd);`
+Closes epoll file descriptor if open.
+
+### Line 58: `  if (idle_fd >= 0)`
+### Line 59: `    close(idle_fd);`
+Closes spare file descriptor if open.
+
+### Line 60: `}`
+Closes destructor.
+
+### Line 61: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 62: `void Server::run() {`
+Core reactor event loop method.
+
+### Line 63: `  epoll_event events[MAX_EVENTS];`
+Allocates stack array receiving ready I/O events.
+
+### Line 64: `  printf("listening on port %d\n", port);`
+Prints startup listening confirmation.
+
+### Line 65: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 66: `  while (true) {`
+Enters infinite event loop.
+
+### Line 67: `    int n = epoll_wait(epfd, events, MAX_EVENTS, 1000);`
+Waits for ready events with a 1,000 ms timeout to allow periodic idle connection sweeps.
+
+### Line 68: `    for (int i = 0; i < n; i++) {`
+Iterates over ready events.
+
+### Line 69: `      int fd = events[i].data.fd;`
+Extracts descriptor associated with ready event.
+
+### Line 70: `      if (fd == server_fd) {`
+### Line 71: `        accept_clients();`
+Invokes accept handler if listening socket is readable.
+
+### Line 72: `      } else {`
+### Line 73: `        if (events[i].events & EPOLLIN) {`
+### Line 74: `          handle_read(fd);`
+### Line 75: `        }`
+Invokes read handler if client socket has incoming bytes.
+
+### Line 76: `        if (events[i].events & EPOLLOUT) {`
+### Line 77: `          handle_write(fd);`
+### Line 78: `        }`
+Invokes write handler if client socket is ready for outgoing bytes.
+
+### Line 79: `      }`
+### Line 80: `    }`
+Closes event iteration loop.
+
+### Line 81: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 82: `    auto now = std::chrono::steady_clock::now();`
+Captures current monotonic timestamp for timeout evaluation.
+
+### Line 83: `    std::vector<int> to_close;`
+Initializes list of idle connection descriptors to close.
+
+### Line 84: `    for (const auto &[cfd, state] : clients) {`
+### Line 85: `      if (std::chrono::duration_cast<std::chrono::seconds>(now - state.last_active).count() > IDLE_TIMEOUT_SECONDS) {`
+### Line 86: `        to_close.push_back(cfd);`
+### Line 87: `      }`
+### Line 88: `    }`
+Identifies client connections idle for longer than `IDLE_TIMEOUT_SECONDS` (60s).
+
+### Line 89: `    for (int cfd : to_close) {`
+### Line 90: `      close_client(cfd);`
+### Line 91: `    }`
+Gracefully disconnects expired idle connections.
+
+### Line 92: `  }`
+Closes `while` loop.
+
+### Line 93: `}`
+Closes `run()`.
+
+### Line 94: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 95: `void Server::accept_clients() {`
+Handles incoming client connection requests.
+
+### Line 96: `  while (true) {`
+Loops accepting all pending connections in backlog queue.
+
+### Line 97: `    int client_fd = accept(server_fd, nullptr, nullptr);`
+Accepts incoming connection request.
+
+### Line 98: `    if (client_fd < 0) {`
+### Line 99: `      if (errno == EMFILE || errno == ENFILE) {`
+### Line 100: `        if (idle_fd >= 0) {`
+### Line 101: `          close(idle_fd);`
+### Line 102: `          int temp_fd = accept(server_fd, nullptr, nullptr);`
+### Line 103: `          if (temp_fd >= 0) close(temp_fd);`
+### Line 104: `          idle_fd = open("/dev/null", O_RDONLY);`
+### Line 105: `        }`
+### Line 106: `      }`
+### Line 107: `      break;`
+### Line 108: `    }`
+Drains excess socket when `EMFILE`/`ENFILE` occurs to prevent level-triggered 100% CPU spin. Exits loop when backlog is empty.
+
+### Line 109: `    ClientState state{client_fd, "", "", false, std::chrono::steady_clock::now()};`
+Initializes new client state with current timestamp.
+
+### Line 110: `    state.read_buf.reserve(16384);`
+### Line 111: `    state.write_buf.reserve(16384);`
+Pre-allocates 16 KB capacity on ingress and egress buffers to avoid memory reallocations during benchmark bursts.
+
+### Line 112: `    clients[client_fd] = std::move(state);`
+Moves pre-allocated state into client map.
+
+### Line 113: `    set_nonblocking(client_fd);`
+Configures accepted socket for non-blocking I/O.
+
+### Line 114: `    int nodelay = 1;`
+### Line 115: `    setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));`
+Disables Nagle's algorithm (`TCP_NODELAY`) to eliminate 40ms delayed-ACK latency stalls.
+
+### Line 116: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 117: `    epoll_event cev{};`
+### Line 118: `    cev.events = EPOLLIN;`
+### Line 119: `    cev.data.fd = client_fd;`
+### Line 120: `    epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &cev);`
+Registers client socket descriptor with epoll for read readiness (`EPOLLIN`).
+
+### Line 121: `#ifdef VERBOSE`
+### Line 122: `    printf("client %d connected\n", client_fd);`
+### Line 123: `#endif`
+Conditionally logs connection under verbose debugging builds.
+
+### Line 124: `  }`
+Closes accept loop.
+
+### Line 125: `}`
+Closes `accept_clients()`.
+
+### Line 126: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 127: `void Server::handle_read(int fd) {`
+Ingress read handler reading data and processing requests.
+
+### Line 128: `  char buf[16384];`
+Allocates a 16 KB stack buffer to ingest large pipelined batches in fewer system calls.
+
+### Line 129: `  ssize_t count = read(fd, buf, sizeof(buf));`
+Performs non-blocking read into stack buffer.
+
+### Line 130: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 131: `  if (count <= 0) {`
+### Line 132: `    if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {`
+### Line 133: `      return;`
+### Line 134: `    }`
+### Line 135: `    close_client(fd);`
+### Line 136: `    return;`
+### Line 137: `  }`
+Returns on `EAGAIN`; closes client on EOF (`count == 0`) or fatal socket read error.
+
+### Line 138: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 139: `  auto &state = clients[fd];`
+Retrieves reference to client state.
+
+### Line 140: `  state.last_active = std::chrono::steady_clock::now();`
+Updates client activity timestamp.
+
+### Line 141: `  state.read_buf.append(buf, count);`
+Appends incoming bytes to client ingress buffer.
+
+### Line 142: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 143: `  size_t cursor = 0;`
+Initializes read offset cursor for batch parsing.
+
+### Line 144: `  while (cursor < state.read_buf.size()) {`
+Loops advancing `cursor` through `read_buf` without shifting memory per command.
+
+### Line 145: `    bool should_close = false;`
+### Line 146: `    auto res = Protocol::parse_and_execute(state.read_buf, cursor, state.write_buf, should_close);`
+Parses and executes command, directly appending responses into `state.write_buf`.
+
+### Line 147: `    if (res == Protocol::ParseResult::NEED_MORE_DATA) {`
+### Line 148: `      break;`
+### Line 149: `    }`
+Breaks parsing loop if partial command frame is encountered.
+
+### Line 150: `    if (should_close) {`
+### Line 151: `      state.should_close = true;`
+### Line 152: `    }`
+Sets teardown flag if `QUIT` was executed.
+
+### Line 153: `    if (state.write_buf.size() > MAX_WRITE_BUF_LEN) {`
+### Line 154: `      close_client(fd);`
+### Line 155: `      return;`
+### Line 156: `    }`
+Enforces 10 MB write buffer backpressure cap.
+
+### Line 157: `  }`
+Closes streaming parse loop.
+
+### Line 158: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 159: `  if (cursor > 0) {`
+### Line 160: `    state.read_buf.erase(0, cursor);`
+### Line 161: `  }`
+Performs a single memory erase at the end of the batch, eliminating $O(K^2)$ memory copying.
+
+### Line 162: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 163: `  if (!state.write_buf.empty()) {`
+### Line 164: `    ssize_t written = write(fd, state.write_buf.data(), state.write_buf.size());`
+### Line 165: `    if (written > 0) {`
+### Line 166: `      state.write_buf.erase(0, written);`
+### Line 167: `    } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {`
+### Line 168: `      close_client(fd);`
+### Line 169: `      return;`
+### Line 170: `    }`
+### Line 171: `  }`
+Attempts immediate non-blocking flush to network.
+
+### Line 172: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 173: `  if (state.should_close && state.write_buf.empty()) {`
+### Line 174: `    close_client(fd);`
+### Line 175: `    return;`
+### Line 176: `  }`
+Closes client socket immediately if `QUIT` was requested and output buffer has drained.
+
+### Line 177: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 178: `  if (!state.write_buf.empty()) {`
+### Line 179: `    epoll_event cev{};`
+### Line 180: `    cev.events = EPOLLIN | EPOLLOUT;`
+### Line 181: `    cev.data.fd = fd;`
+### Line 182: `    epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &cev);`
+### Line 183: `  }`
+Registers `EPOLLOUT` to resume transmission once socket becomes writable.
+
+### Line 184: `}`
+Closes `handle_read()`.
+
+### Line 185: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 186: `void Server::handle_write(int fd) {`
+Egress flush handler invoked on `EPOLLOUT` events.
+
+### Line 187: `  if (clients.find(fd) == clients.end())`
+### Line 188: `    return;`
+Safety check verifying descriptor exists.
+
+### Line 189: `  auto &state = clients[fd];`
+Retrieves client state.
+
+### Line 190: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 191: `  ssize_t written = write(fd, state.write_buf.data(), state.write_buf.size());`
+### Line 192: `  if (written > 0) {`
+### Line 193: `    state.write_buf.erase(0, written);`
+### Line 194: `  } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {`
+### Line 195: `    close_client(fd);`
+### Line 196: `    return;`
+### Line 197: `  }`
+Flushes pending bytes and removes sent data from `write_buf`.
+
+### Line 198: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 199: `  if (state.write_buf.empty()) {`
+### Line 200: `    if (state.should_close) {`
+### Line 201: `      close_client(fd);`
+### Line 202: `      return;`
+### Line 203: `    }`
+### Line 204: `    epoll_event cev{};`
+### Line 205: `    cev.events = EPOLLIN;`
+### Line 206: `    cev.data.fd = fd;`
+### Line 207: `    epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &cev);`
+### Line 208: `  }`
+When write buffer is fully drained: closes connection if `QUIT` was requested, or modifies epoll registration back to `EPOLLIN` only to avoid 100% CPU busy-spinning on writable sockets.
+
+### Line 209: `}`
+Closes `handle_write()`.
+
+### Line 210: *(Empty Line)*
+Whitespace separator for visual clarity.
+
+### Line 211: `void Server::close_client(int fd) {`
+Graceful client teardown and resource release handler.
+
+### Line 212: `  epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);`
+Deregisters descriptor from epoll watch set.
+
+### Line 213: `  close(fd);`
+Closes underlying OS socket descriptor.
+
+### Line 214: `  clients.erase(fd);`
+Removes client state from registry map.
+
+### Line 215: `#ifdef VERBOSE`
+### Line 216: `  printf("client %d disconnected\n", fd);`
+### Line 217: `#endif`
+Conditionally logs disconnection under verbose debugging builds.
+
+### Line 218: `}`
+Closes `close_client()`.
